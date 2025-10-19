@@ -1,0 +1,135 @@
+🚀 KARATE - GET STARTED IN 3 STEPS
+
+=========================================
+Welcome to Karate!
+=========================================
+
+This is your quick start guide to begin creating amazing AI workflows.
+
+=========================================
+STEP 1: Sign Up (1 minute)
+=========================================
+
+Visit https://karate.ai (or your domain)
+
+Click "START NOW" or "SIGN UP"
+Enter your email and create a password
+
+=========================================
+STEP 2: Explore the Dashboard (2 minutes)
+=========================================
+
+After login, you'll see:
+
+✅ MY FILES - Your saved workflows
+✅ TEMPLATES - Ready-to-use workflow templates
+✅ CREATE NEW - Start building your own
+
+Click "Create New File" or choose a template
+to start building!
+
+=========================================
+STEP 3: Build Your First Workflow (5 minutes)
+=========================================
+
+In the Editor:
+
+1. Click ☰ menu on the left to open sidebar
+2. Browse AI MODELS or TOOLS tabs
+3. Click any card to add it to your canvas
+4. Drag between outputs (yellow dots) and 
+   inputs (cyan dots) to connect nodes
+5. Your work saves automatically
+
+=========================================
+✅ DONE! You're ready to create.
+=========================================
+
+📖 WHAT YOU CAN DO
+
+LANDING PAGE:
+- See amazing AI tools and capabilities
+- Learn about the platform
+- Get inspired by examples
+
+DASHBOARD:
+- View all your workflows
+- Create new projects
+- Use templates for quick start
+
+EDITOR:
+- Add AI models and tools
+- Connect them with lines
+- Run and generate results
+- Save your work automatically
+
+=========================================
+💡 QUICK TIPS
+=========================================
+
+Tip 1: Start with a template
+  Templates have pre-built workflows
+  Great for learning how it works
+
+Tip 2: Hover over nodes
+  See what each tool does
+  Understand the connections
+
+Tip 3: Save early, save often
+  Everything auto-saves
+  Never lose your work
+
+Tip 4: Check /docs for help
+  Interactive guides
+  Tutorial videos
+  FAQ section
+
+=========================================
+🎨 COMMON WORKFLOWS
+=========================================
+
+IMAGE GENERATION:
+  Text → Stable Diffusion → Image
+
+VIDEO CREATION:
+  Image → Runway → Video Output
+
+UPSCALING:
+  Low-res Image → Upscale → High-res
+
+BACKGROUND REMOVAL:
+  Image → Remove BG → Clean Image
+
+=========================================
+❓ FAQs
+=========================================
+
+Q: How do I save my work?
+A: Everything saves automatically!
+
+Q: Can I share workflows?
+A: Yes! Click Share on any workflow
+
+Q: What if I need help?
+A: Visit /docs or contact support
+
+Q: Is my data private?
+A: Yes, 100% private and encrypted
+
+=========================================
+📚 LEARN MORE
+=========================================
+
+- /docs - Full documentation
+- /editor - Try the editor
+- Templates - Pre-built examples
+- Support - Contact our team
+
+=========================================
+🎉 LET'S GET STARTED!
+
+Visit the platform and create your first 
+workflow in just 5 minutes!
+
+Happy creating! 🚀
+=========================================

@@ -1,0 +1,13 @@
+node_modules
+.next
+.vercel
+.DS_Store
+__pycache__
+.env
+.env.*
+*.env
+backend/.venv
+**/.venv
+convex/.deployment
+convex/_generated
+.env.local
