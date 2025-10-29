@@ -1,16 +1,10 @@
+"use client";
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Card, CardBody, Input, Tab, Tabs, ScrollShadow } from '@heroui/react';
+import { Card, CardBody, Input, Tab, Tabs } from '@heroui/react';
+import type { PaletteItem } from './types';
 
-interface SidebarItem {
-  name: string;
-  type: string;
-  icon: string;
-  symbol?: string; // deprecated visual badge (no longer displayed)
-  category: string;
-  brand: string;
-  logo?: string; // optional explicit logo URL
-}
+type SidebarItem = PaletteItem;
 
 interface SidebarProps {
   isOpen: boolean;
@@ -28,7 +22,7 @@ interface SidebarProps {
 export default function Sidebar({ isOpen, models, tools, onAddNode, onActiveCategoryChange, scrollToCategory, onConsumeScrollToCategory, focusSearchSignal, externalActiveTab }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<string>('models');
-  const [draggedItem, setDraggedItem] = useState<any>(null);
+  const [draggedItem, setDraggedItem] = useState<SidebarItem | null>(null);
   const [activeCategory, setActiveCategory] = useState<string>('');
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
@@ -119,7 +113,25 @@ export default function Sidebar({ isOpen, models, tools, onAddNode, onActiveCate
 
   useEffect(() => {
     if (!scrollToCategory) return;
-    handleCategoryClick(scrollToCategory);
+    // Determine which tab contains the requested category
+    const modelCats = Array.from(new Set(models.map((i) => i.category)));
+    const toolCats = Array.from(new Set(tools.map((i) => i.category)));
+    const targetTab = toolCats.includes(scrollToCategory)
+      ? 'tools'
+      : modelCats.includes(scrollToCategory)
+        ? 'models'
+        : activeTab;
+
+    // If tab needs to change, switch first and then scroll after render
+    if (targetTab !== activeTab) {
+      setActiveTab(targetTab);
+      // Wait for the tab content to render sections, then scroll
+      requestAnimationFrame(() => {
+        setTimeout(() => handleCategoryClick(scrollToCategory), 0);
+      });
+    } else {
+      handleCategoryClick(scrollToCategory);
+    }
     if (onConsumeScrollToCategory) onConsumeScrollToCategory();
   }, [scrollToCategory]);
 
@@ -132,7 +144,7 @@ export default function Sidebar({ isOpen, models, tools, onAddNode, onActiveCate
     container.scrollTo({ top, behavior: 'smooth' });
   };
 
-  const handleDragStart = (e: React.DragEvent, item: any) => {
+  const handleDragStart = (e: React.DragEvent, item: SidebarItem) => {
     setDraggedItem(item);
     e.dataTransfer.effectAllowed = 'copy';
     e.dataTransfer.setData('application/json', JSON.stringify({
@@ -159,14 +171,14 @@ export default function Sidebar({ isOpen, models, tools, onAddNode, onActiveCate
 
           {/* Sidebar */}
           <motion.div
-            className="fixed md:relative w-64 h-screen bg-zinc-900 border-r border-zinc-800 flex flex-col z-30 md:z-auto"
+            className="fixed md:relative w-64 h-screen bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex flex-col z-30 md:z-auto"
             initial={{ x: '-100%' }}
             animate={{ x: 0 }}
             exit={{ x: '-100%' }}
             transition={{ duration: 0.3 }}
           >
             {/* Header */}
-            <div className="p-4 border-b border-zinc-800">
+            <div className="p-4 border-b border-zinc-200 dark:border-zinc-800">
               <h2 className="text-lg font-bold text-white mb-3">AI Models & Tools</h2>
               <Input
                 isClearable
@@ -185,7 +197,8 @@ export default function Sidebar({ isOpen, models, tools, onAddNode, onActiveCate
             <Tabs
               aria-label="Options"
               selectedKey={activeTab}
-              onSelectionChange={setActiveTab as any}
+              // HeroUI types are generic over Selection and Key; adapt to string state
+              onSelectionChange={(key) => setActiveTab(String(key))}
               size="sm"
               className="px-4 pt-2"
             >
@@ -194,10 +207,13 @@ export default function Sidebar({ isOpen, models, tools, onAddNode, onActiveCate
             </Tabs>
 
             {/* Category Pills removed as requested */}
-            <div className="h-2 bg-zinc-900 border-b border-zinc-900" />
+            <div className="h-2 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-900" />
 
             {/* Content */}
-            <ScrollShadow ref={scrollContainerRef as any} className="flex-1 overflow-y-auto">
+            <div
+              ref={scrollContainerRef}
+              className="flex-1 overflow-y-auto overflow-x-hidden"
+            >
               {filteredByCategory.length === 0 ? (
                 <div className="p-4 text-center text-zinc-500 text-sm">
                   No {activeTab} found
@@ -210,25 +226,28 @@ export default function Sidebar({ isOpen, models, tools, onAddNode, onActiveCate
                       ref={(el) => { sectionRefs.current[group.category] = el; }}
                       data-category={group.category}
                     >
-                      <h3 className="text-xs font-bold text-yellow-400 mb-2 uppercase tracking-wider">
+                      <h3 className="text-xs font-bold text-yellow-500 dark:text-yellow-400 mb-2 uppercase tracking-wider">
                         {group.category}
                       </h3>
                       <div className="grid grid-cols-2 gap-2">
                         {group.items.map((item) => (
                           <motion.div
                             key={item.name}
-                            draggable
-                            onDragStart={(e) => handleDragStart(e as any, item)}
-                            onDragEnd={handleDragEnd}
-                            onClick={() => onAddNode(item.type, item.name)}
-                            className={`cursor-move ${
-                              draggedItem?.name === item.name ? 'opacity-50' : ''
-                            }`}
                             whileHover={{ scale: 1.05, y: -2 }}
                             whileTap={{ scale: 0.95 }}
                           >
-                        <Card className="bg-gradient-to-br from-zinc-800 to-zinc-900 border border-zinc-700 hover:border-yellow-400/50 transition-all">
-                          <CardBody className="relative p-3 gap-2 flex flex-col items-center text-center">
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, item)}
+                          onDragEnd={handleDragEnd}
+                          onClick={() => onAddNode(item.type, item.name)}
+                          className={`cursor-move ${draggedItem?.name === item.name ? 'opacity-50' : ''}`}
+                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onAddNode(item.type, item.name); }}
+                        >
+                        <Card className="bg-white dark:bg-gradient-to-br dark:from-zinc-800 dark:to-zinc-900 border border-zinc-200 dark:border-zinc-700 hover:border-yellow-400/50 transition-all overflow-hidden">
+                          <CardBody className="relative p-3 gap-2 flex flex-col items-center text-center overflow-hidden">
                             {/* Logo or emoji icon */}
                             <div className="flex items-center justify-center">
                               {(() => {
@@ -264,7 +283,7 @@ export default function Sidebar({ isOpen, models, tools, onAddNode, onActiveCate
                             </div>
                             
                             {/* Name & Brand only */}
-                            <p className="text-xs font-semibold text-white line-clamp-2">
+                            <p className="text-xs font-semibold text-zinc-900 dark:text-white text-center whitespace-normal break-words">
                               {item.name}
                             </p>
                             <p className="text-xs text-zinc-500 mt-0.5">
@@ -277,6 +296,7 @@ export default function Sidebar({ isOpen, models, tools, onAddNode, onActiveCate
                             </div>
                           </CardBody>
                         </Card>
+                        </div>
                           </motion.div>
                         ))}
                       </div>
@@ -284,19 +304,11 @@ export default function Sidebar({ isOpen, models, tools, onAddNode, onActiveCate
                   ))}
                 </div>
               )}
-            </ScrollShadow>
+            </div>
 
-            {/* Footer: avatar (bottom-left) + hint */}
-            <div className="p-3 border-t border-zinc-800 bg-zinc-900/50 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs text-zinc-300">
-                  U
-                </div>
-                <span className="text-xs text-zinc-400">Login</span>
-              </div>
-              <p className="text-[11px] text-zinc-500">
-                Drag to canvas or click to add
-              </p>
+            {/* Footer hint only (login avatar moved to top bar) */}
+            <div className="p-3 border-t border-zinc-200 dark:border-zinc-800 bg-white/60 dark:bg-zinc-900/50 flex items-center justify-center">
+              <p className="text-[11px] text-zinc-500">Drag to canvas or click to add</p>
             </div>
           </motion.div>
         </>

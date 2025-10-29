@@ -1,23 +1,31 @@
-import { memo, useCallback, useMemo, useState } from 'react';
+"use client";
+import { memo, useCallback } from 'react';
 import { Handle, Position, useNodeId, useReactFlow } from '@xyflow/react';
+import type { PromptData, ImageUploadData, ImageNodeData } from '../types';
 import { motion } from 'framer-motion';
 
 // Base Node Component
-const BaseNode = ({
-  label,
-  icon,
-  color,
-  children,
-}: {
-  label: string;
-  icon: string;
-  color: string;
-  children?: React.ReactNode;
-}) => {
+type BaseNodeProps = { label: string; icon: string; color: string; children?: React.ReactNode };
+const BaseNode = ({ label, icon, color, children }: BaseNodeProps) => {
+  const nodeId = useNodeId();
+  const { setNodes } = useReactFlow();
+  const onCtx = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('karate-node-contextmenu', { detail: { x: e.clientX, y: e.clientY, nodeId } }));
+    }
+  };
+  const onMouseDownSelect = () => {
+    if (!nodeId) return;
+    setNodes((nds) => nds.map((n) => (n.id === nodeId ? { ...n, selected: true } : { ...n, selected: false })));
+  };
   return (
     <div
-      className={`bg-gradient-to-b ${color} border border-opacity-50 rounded-lg min-w-[220px] shadow-lg relative p-4`}
+      className={`node-surface min-w-[260px] relative p-4`}
       style={{ outline: 'none' }}
+      onContextMenu={onCtx}
+      onMouseDown={onMouseDownSelect}
     >
       {/* Input Handle - Top */}
       <Handle 
@@ -28,13 +36,15 @@ const BaseNode = ({
       />
 
       {/* Node Header */}
-      <div className="flex items-center gap-2 mb-3">
-        <div className="text-xl">{icon}</div>
-        <h3 className="text-sm font-bold text-white">{label}</h3>
+      <div className="node-header">
+        <div className="flex items-center gap-2">
+          <div className="text-xl">{icon}</div>
+          <h3 className="node-title">{label}</h3>
+        </div>
       </div>
 
       {/* Node Body */}
-      {children}
+      <div className="node-body">{children}</div>
 
       {/* Output Handle - Bottom */}
       <Handle 
@@ -48,25 +58,17 @@ const BaseNode = ({
 };
 
 // Stable Diffusion Node
-export const StableDiffusionNode = memo(({ data }: any) => {
+export const StableDiffusionNode = memo(({ data }: { data: { label?: string; prompt?: string } }) => {
   return (
-    <BaseNode
-      label={data.label || 'Stable Diffusion 3.5'}
-      icon="✨"
-      color="from-purple-900/80 to-purple-800/80"
-    >
+    <BaseNode label={data.label || 'Stable Diffusion 3.5'} icon="✨" color="accent-purple">
       <div className="space-y-2">
         <div className="text-xs text-zinc-300 font-medium">Prompt</div>
-        <textarea
-          defaultValue={data.prompt || 'Create an AI-generated image...'}
-          className="w-full text-xs p-2 bg-black/50 border border-purple-500/30 rounded text-zinc-200 resize-none h-16 focus:outline-none focus:border-yellow-400"
-          placeholder="Describe your image..."
-        />
-        <div className="flex gap-1">
-          <button className="flex-1 py-1 px-2 text-xs bg-yellow-400/20 border border-yellow-400/50 text-yellow-300 rounded hover:bg-yellow-400/30 transition-all">
+        <textarea defaultValue={data.prompt || 'Create an AI-generated image...'} className="node-textarea h-16" placeholder="Describe your image..." />
+        <div className="node-toolbar">
+          <button className="node-btn node-btn-primary flex-1">
             ⚙️ Settings
           </button>
-          <button className="flex-1 py-1 px-2 text-xs bg-purple-500/20 border border-purple-400/50 text-purple-300 rounded hover:bg-purple-500/30 transition-all">
+          <button className="node-btn flex-1">
             🎨 Generate
           </button>
         </div>
@@ -78,18 +80,18 @@ export const StableDiffusionNode = memo(({ data }: any) => {
 StableDiffusionNode.displayName = 'StableDiffusionNode';
 
 // Image Node
-export const ImageNode = memo(({ data }: any) => {
+export const ImageNode = memo(({ data }: { data: ImageNodeData }) => {
   return (
-    <BaseNode
-      label={data.label || 'Image'}
-      icon="🖼️"
-      color="from-cyan-900/80 to-cyan-800/80"
-    >
+    <BaseNode label={data.label || 'Image'} icon="🖼️" color="accent-cyan">
       <div className="space-y-2">
-        <div className="w-full h-24 bg-gradient-to-br from-cyan-600/20 to-cyan-500/20 border border-cyan-500/30 rounded flex items-center justify-center">
-          <span className="text-3xl">🖼️</span>
+        <div className="w-full h-24 bg-zinc-800/60 border border-zinc-700 rounded flex items-center justify-center overflow-hidden">
+          {data.imageSrc ? (
+            <img src={data.imageSrc} alt={data.imageName || data.label || 'image'} className="max-h-24 object-contain" />
+          ) : (
+            <span className="text-3xl">🖼️</span>
+          )}
         </div>
-        <button className="w-full py-1.5 text-xs bg-cyan-500/20 border border-cyan-400/50 text-cyan-300 rounded hover:bg-cyan-500/30 transition-all">
+        <button className="node-btn w-full">
           📁 Upload Image
         </button>
       </div>
@@ -100,20 +102,11 @@ export const ImageNode = memo(({ data }: any) => {
 ImageNode.displayName = 'ImageNode';
 
 // Text Node
-export const TextNode = memo(({ data }: any) => {
+export const TextNode = memo(({ data }: { data: { label?: string; text?: string } }) => {
   return (
-    <BaseNode
-      label={data.label || 'Text Input'}
-      icon="📝"
-      color="from-orange-900/80 to-orange-800/80"
-    >
+    <BaseNode label={data.label || 'Text Input'} icon="📝" color="accent-orange">
       <div className="space-y-2">
-        <input
-          type="text"
-          defaultValue={data.text || 'Enter text...'}
-          className="w-full text-xs p-2 bg-black/50 border border-orange-500/30 rounded text-zinc-200 focus:outline-none focus:border-yellow-400"
-          placeholder="Enter text..."
-        />
+        <input type="text" defaultValue={data.text || 'Enter text...'} className="node-input" placeholder="Enter text..." />
       </div>
     </BaseNode>
   );
@@ -122,21 +115,17 @@ export const TextNode = memo(({ data }: any) => {
 TextNode.displayName = 'TextNode';
 
 // Upscale Node
-export const UpscaleNode = memo(({ data }: any) => {
+export const UpscaleNode = memo(({ data }: { data: { label?: string; scale?: string } }) => {
   return (
-    <BaseNode
-      label={data.label || 'Upscale'}
-      icon="🔍"
-      color="from-blue-900/80 to-blue-800/80"
-    >
+    <BaseNode label={data.label || 'Upscale'} icon="🔍" color="accent-blue">
       <div className="space-y-2">
         <div className="text-xs text-zinc-300 font-medium">Scale Factor</div>
-        <select className="w-full text-xs p-2 bg-black/50 border border-blue-500/30 rounded text-zinc-200 focus:outline-none focus:border-yellow-400">
+        <select className="node-input">
           <option>2x (Double)</option>
           <option>4x (Quad)</option>
           <option>8x (Ultra)</option>
         </select>
-        <button className="w-full py-1.5 text-xs bg-blue-500/20 border border-blue-400/50 text-blue-300 rounded hover:bg-blue-500/30 transition-all">
+        <button className="node-btn w-full">
           ⚡ Upscale
         </button>
       </div>
@@ -147,21 +136,13 @@ export const UpscaleNode = memo(({ data }: any) => {
 UpscaleNode.displayName = 'UpscaleNode';
 
 // Inpaint Node
-export const InpaintNode = memo(({ data }: any) => {
+export const InpaintNode = memo(({ data }: { data: { label?: string; prompt?: string } }) => {
   return (
-    <BaseNode
-      label={data.label || 'Inpaint'}
-      icon="🎨"
-      color="from-pink-900/80 to-pink-800/80"
-    >
+    <BaseNode label={data.label || 'Inpaint'} icon="🎨" color="accent-pink">
       <div className="space-y-2">
         <div className="text-xs text-zinc-300 font-medium">Mask & Prompt</div>
-        <textarea
-          defaultValue={data.prompt || 'What to inpaint...'}
-          className="w-full text-xs p-2 bg-black/50 border border-pink-500/30 rounded text-zinc-200 resize-none h-12 focus:outline-none focus:border-yellow-400"
-          placeholder="Describe what to paint..."
-        />
-        <button className="w-full py-1.5 text-xs bg-pink-500/20 border border-pink-400/50 text-pink-300 rounded hover:bg-pink-500/30 transition-all">
+        <textarea defaultValue={data.prompt || 'What to inpaint...'} className="node-textarea h-12" placeholder="Describe what to paint..." />
+        <button className="node-btn w-full">
           🎨 Inpaint
         </button>
       </div>
@@ -172,10 +153,10 @@ export const InpaintNode = memo(({ data }: any) => {
 InpaintNode.displayName = 'InpaintNode';
 
 // Prompt Node
-export const PromptNode = memo(({ data }: any) => {
+export const PromptNode = memo(({ data }: { data: PromptData }) => {
   const nodeId = useNodeId();
   const { setNodes } = useReactFlow();
-  const updateData = useCallback((patch: Record<string, any>) => {
+  const updateData = useCallback((patch: Record<string, unknown>) => {
     if (!nodeId) return;
     setNodes((nds) => nds.map((n) => n.id === nodeId ? { ...n, data: { ...n.data, ...patch } } : n));
   }, [nodeId, setNodes]);
@@ -210,36 +191,15 @@ export const PromptNode = memo(({ data }: any) => {
         <div className="grid grid-cols-3 gap-2">
           <div>
             <div className="text-[10px] text-zinc-400 mb-1">Steps</div>
-            <input
-              type="number"
-              value={steps}
-              min={1}
-              max={100}
-              onChange={(e) => updateData({ steps: Number(e.target.value) })}
-              className="w-full text-xs p-1.5 bg-black/50 border border-zinc-600 rounded text-zinc-200 focus:outline-none focus:border-yellow-400"
-            />
+            <input type="number" value={steps} min={1} max={100} onChange={(e) => updateData({ steps: Number(e.target.value) })} className="node-input" />
           </div>
           <div>
             <div className="text-[10px] text-zinc-400 mb-1">Guidance</div>
-            <input
-              type="number"
-              value={guidance}
-              step={0.5}
-              min={0}
-              max={50}
-              onChange={(e) => updateData({ guidance: Number(e.target.value) })}
-              className="w-full text-xs p-1.5 bg-black/50 border border-zinc-600 rounded text-zinc-200 focus:outline-none focus:border-yellow-400"
-            />
+            <input type="number" value={guidance} step={0.5} min={0} max={50} onChange={(e) => updateData({ guidance: Number(e.target.value) })} className="node-input" />
           </div>
           <div>
             <div className="text-[10px] text-zinc-400 mb-1">Seed</div>
-            <input
-              type="text"
-              value={seed}
-              onChange={(e) => updateData({ seed: e.target.value })}
-              className="w-full text-xs p-1.5 bg-black/50 border border-zinc-600 rounded text-zinc-200 focus:outline-none focus:border-yellow-400"
-              placeholder="random"
-            />
+            <input type="text" value={seed} onChange={(e) => updateData({ seed: e.target.value })} className="node-input" placeholder="random" />
           </div>
         </div>
       </div>
@@ -250,10 +210,10 @@ export const PromptNode = memo(({ data }: any) => {
 PromptNode.displayName = 'PromptNode';
 
 // Image Upload Node
-export const ImageUploadNode = memo(({ data }: any) => {
+export const ImageUploadNode = memo(({ data }: { data: ImageUploadData }) => {
   const nodeId = useNodeId();
   const { setNodes } = useReactFlow();
-  const updateData = useCallback((patch: Record<string, any>) => {
+  const updateData = useCallback((patch: Record<string, unknown>) => {
     if (!nodeId) return;
     setNodes((nds) => nds.map((n) => n.id === nodeId ? { ...n, data: { ...n.data, ...patch } } : n));
   }, [nodeId, setNodes]);

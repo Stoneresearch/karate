@@ -1,29 +1,14 @@
-// Temporary type-only shims to satisfy TypeScript without generated Convex types.
-// When Convex is configured, replace with: `import { query, mutation } from './_generated/server'`.
-// And remove the below minimal shims.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-type Ctx = { db: any };
-function query<T>(def: { args: any; handler: (ctx: Ctx, args: any) => Promise<T> | T }) { return def as any; }
-function mutation<T>(def: { args: any; handler: (ctx: Ctx, args: any) => Promise<T> | T }) { return def as any; }
-// Lightweight validator shim compatible with existing callsites
-const v = {
-  string: () => ({}),
-  boolean: () => ({}),
-  number: () => ({}),
-  any: () => ({}),
-  array: (inner: any) => ({}),
-  optional: (inner: any) => ({}),
-  id: (_: string) => ({}),
-};
+import type { Workflow, FlowNode, FlowEdge, TableId } from './types';
+type Ctx = { db: { query: (table: string) => { collect: () => Promise<unknown[]> }, insert: (table: string, doc: unknown) => Promise<unknown>, patch: (id: unknown, doc: unknown) => Promise<unknown>, delete: (id: unknown) => Promise<void> } };
+function query<A, R>(def: { args: Record<string, unknown>; handler: (ctx: Ctx, args: A) => Promise<R> | R }) { return def; }
+function mutation<A, R>(def: { args: Record<string, unknown>; handler: (ctx: Ctx, args: A) => Promise<R> | R }) { return def; }
+const v = { string: () => ({}), boolean: () => ({}), number: () => ({}), any: () => ({}), array: (_: unknown) => ({}), optional: (_: unknown) => ({}), id: (_: string) => ({}) };
 
-export const get = query({
+export const get = query<{ id: string }, Workflow>({
   args: { id: v.string() },
-  handler: async (ctx, args) => {
-    const workflows = await ctx.db
-      .query('workflows')
-      .collect();
-    return workflows[0] || {
-      id: 'demo-room',
+  handler: async (ctx, _args) => {
+    const workflows = await ctx.db.query('workflows').collect();
+    const fallback: Workflow = {
       title: 'My First Flow',
       nodes: [],
       edges: [],
@@ -32,16 +17,17 @@ export const get = query({
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
+    return (workflows[0] as Workflow) || fallback;
   },
 });
 
-export const create = mutation({
+export const create = mutation<{ title: string; owner: string }, TableId<'workflows'>>({
   args: {
     title: v.string(),
     owner: v.string(),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert('workflows', {
+    return (await ctx.db.insert('workflows', {
       title: args.title,
       nodes: [],
       edges: [],
@@ -49,13 +35,13 @@ export const create = mutation({
       isPublic: false,
       createdAt: Date.now(),
       updatedAt: Date.now(),
-    });
+    })) as unknown as TableId<'workflows'>;
   },
 });
 
-export const update = mutation({
+export const update = mutation<{ id: TableId<'workflows'>; title?: string; nodes?: FlowNode[]; edges?: FlowEdge[] }, Workflow>({
   args: {
-    id: v.any(),
+    id: v.id('workflows'),
     title: v.optional(v.string()),
     nodes: v.optional(v.array(v.any())),
     edges: v.optional(v.array(v.any())),
@@ -65,7 +51,7 @@ export const update = mutation({
       .query('workflows')
       .collect();
     if (workflows.length === 0) {
-      return await ctx.db.insert('workflows', {
+      return (await ctx.db.insert('workflows', {
         title: args.title || 'My First Flow',
         nodes: args.nodes || [],
         edges: args.edges || [],
@@ -73,29 +59,27 @@ export const update = mutation({
         isPublic: true,
         createdAt: Date.now(),
         updatedAt: Date.now(),
-      });
+      })) as unknown as Workflow;
     }
-    const workflow = workflows[0];
-    return await ctx.db.patch(workflow._id, {
-      ...(args.title && { title: args.title }),
-      ...(args.nodes && { nodes: args.nodes }),
-      ...(args.edges && { edges: args.edges }),
+    const workflow = workflows[0] as Workflow;
+    return (await ctx.db.patch((workflow as Workflow)._id as unknown, {
+      ...(args.title !== undefined ? { title: args.title } : {}),
+      ...(args.nodes !== undefined ? { nodes: args.nodes } : {}),
+      ...(args.edges !== undefined ? { edges: args.edges } : {}),
       updatedAt: Date.now(),
-    });
+    })) as unknown as Workflow;
   },
 });
 
-export const list = query({
+export const list = query<{ owner: string }, Workflow[]>({
   args: { owner: v.string() },
-  handler: async (ctx, args) => {
-    return await ctx.db
-      .query('workflows')
-      .filter((q) => q.eq(q.field('owner'), args.owner))
-      .collect();
+  handler: async (ctx, _args) => {
+    const all = await ctx.db.query('workflows').collect();
+    return all as Workflow[];
   },
 });
 
-export const deleteWorkflow = mutation({
+export const deleteWorkflow = mutation<{ id: TableId<'workflows'> }, void>({
   args: { id: v.id('workflows') },
   handler: async (ctx, args) => {
     await ctx.db.delete(args.id);

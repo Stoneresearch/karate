@@ -1,12 +1,31 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
+import { SignedIn, SignedOut, UserButton } from '@clerk/nextjs';
 
 export default function Home() {
+  const pk = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || process.env.CLERK_PUBLISHABLE_KEY;
+  const CLERK_ENABLED = typeof pk === 'string' && /^pk_(test|live)_[A-Za-z0-9]{20,}/.test(pk);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [isScrolled, setIsScrolled] = useState(false);
   const [isClient, setIsClient] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const carouselRef = useRef<HTMLDivElement>(null);
+  const isDraggingRef = useRef(false);
+  const dragStartXRef = useRef(0);
+  const scrollStartRef = useRef(0);
+
+  const marqueeModels = [
+    'GPT img 1',
+    'Wan',
+    'SD 3.5',
+    'Runway Gen-4',
+    'Imagen 3',
+    'Veo 3',
+    'Recraft V3',
+    'Kling',
+    'Flux Pro 1.1 Ultra',
+  ];
 
   useEffect(() => {
     setIsClient(true);
@@ -27,6 +46,35 @@ export default function Home() {
       window.removeEventListener('scroll', handleScroll);
     };
   }, []);
+
+  const onCarouselMouseDown = (e: React.MouseEvent) => {
+    if (!carouselRef.current) return;
+    isDraggingRef.current = true;
+    dragStartXRef.current = e.clientX;
+    scrollStartRef.current = carouselRef.current.scrollLeft;
+    (carouselRef.current as HTMLDivElement).style.cursor = 'grabbing';
+  };
+  const onCarouselMouseMove = (e: React.MouseEvent) => {
+    if (!carouselRef.current || !isDraggingRef.current) return;
+    const dx = e.clientX - dragStartXRef.current;
+    carouselRef.current.scrollLeft = scrollStartRef.current - dx;
+  };
+  const onCarouselMouseUp = () => {
+    if (!carouselRef.current) return;
+    isDraggingRef.current = false;
+    (carouselRef.current as HTMLDivElement).style.cursor = 'grab';
+  };
+  const onCarouselMouseLeave = () => {
+    if (!carouselRef.current) return;
+    isDraggingRef.current = false;
+    (carouselRef.current as HTMLDivElement).style.cursor = 'grab';
+  };
+
+  const onCarouselWheel = (e: React.WheelEvent) => {
+    if (!carouselRef.current) return;
+    carouselRef.current.scrollLeft += e.deltaY;
+    e.preventDefault();
+  };
 
   const models = [
     'GPTimg1',
@@ -57,11 +105,10 @@ export default function Home() {
   ];
 
   return (
-    <main className={`min-h-screen overflow-x-hidden bg-gradient-to-b from-[#f6f4ff] via-[#faf9ff] to-white text-zinc-900 dark:bg-black dark:text-white`} ref={containerRef}>
-      {/* Navigation */}
+    <main className={`min-h-screen overflow-x-hidden bg-white text-zinc-900 dark:bg-black dark:text-white`} ref={containerRef}>
       <motion.nav
         className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${
-          isScrolled ? 'bg-white/70 dark:bg-black/70 backdrop-blur-md border-b border-zinc-200/60 dark:border-zinc-800' : 'bg-transparent'
+          isScrolled ? 'bg-white/70 dark:bg-zinc-900/70 backdrop-blur-md border-b border-zinc-200/60 dark:border-zinc-800' : 'bg-transparent'
         }`}
         initial={{ y: -100 }}
         animate={{ y: 0 }}
@@ -95,157 +142,126 @@ export default function Home() {
           </div>
 
           <div className="flex items-center gap-4">
-            <motion.a
-              href="#"
-              className="text-sm text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white transition-colors hidden md:block"
-            >
-              Sign in
-            </motion.a>
+            {CLERK_ENABLED ? (
+              <>
+                <SignedOut>
+                  <motion.a
+                    href="/sign-in"
+                    className="text-sm text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white transition-colors hidden md:block"
+                  >
+                    Sign in
+                  </motion.a>
+                </SignedOut>
+                <SignedIn>
+                  <UserButton afterSignOutUrl="/" appearance={{ elements: { avatarBox: 'w-7 h-7' } }} />
+                </SignedIn>
+              </>
+            ) : (
+              <motion.a
+                href="/sign-in"
+                className="text-sm text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white transition-colors hidden md:block"
+              >
+                Sign in
+              </motion.a>
+            )}
             <motion.a
               href="/dashboard"
-              className="px-6 py-2 text-black font-semibold rounded-md transition-all bg-gradient-to-r from-[#ffe177] via-[#ffc3b0] to-[#9ef8ff] hover:brightness-110"
-              whileHover={{ scale: 1.05, boxShadow: '0 0 20px rgba(250, 204, 21, 0.5)' }}
+              className="btn-primary"
+              whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
-              Dashboard
+              Start Now
             </motion.a>
           </div>
         </div>
       </motion.nav>
 
-      {/* Hero Section */}
-      <section className="relative min-h-screen pt-32 pb-20 overflow-hidden flex items-center justify-center">
-        {/* Animated Background Gradient */}
-        <div className="absolute inset-0 -z-10">
-          <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-white via-[#fff7fb] to-white dark:from-slate-900 dark:via-black dark:to-black" />
-          <motion.div
-            className="absolute top-1/4 right-0 w-96 h-96 rounded-full blur-3xl"
-            animate={{
-              x: [0, 50, 0],
-              y: [0, 30, 0],
-            }}
-            transition={{ duration: 8, repeat: Infinity }}
-            style={{ background: 'conic-gradient(from 90deg at 50% 50%, #ffd27a 0deg, #f2c6ff 120deg, #7ae1ff 240deg, #ffd27a 360deg)' }}
-          />
-          <motion.div
-            className="absolute bottom-1/4 left-0 w-96 h-96 rounded-full blur-3xl"
-            animate={{
-              x: [0, -50, 0],
-              y: [0, -30, 0],
-            }}
-            transition={{ duration: 10, repeat: Infinity }}
-            style={{ background: 'conic-gradient(from 0deg at 50% 50%, #9ef8ff 0deg, #ffe177 120deg, #ffc3b0 240deg, #9ef8ff 360deg)' }}
-          />
+      <section className="relative min-h-[100vh] pt-28 pb-24 overflow-hidden hero-ambient">
+        <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
+          <div className="absolute -right-32 top-20 w-[680px] h-[680px] rounded-full bg-[radial-gradient(circle_at_30%_30%,rgba(255,225,119,0.25),transparent_60%)] blur-3xl" />
+          <div className="absolute -left-40 bottom-0 w-[600px] h-[600px] rounded-full bg-[radial-gradient(circle_at_70%_70%,rgba(158,248,255,0.2),transparent_60%)] blur-3xl" />
         </div>
-
-        {/* 3D Sphere with Parallax */}
-        <div className="absolute inset-0 -z-5 flex items-center justify-end pr-20 perspective">
-          {isClient && (
-            <motion.div
-              className="relative w-96 h-96 rounded-full bg-gradient-to-b from-slate-400 to-slate-800 shadow-2xl"
-              style={{
-                x: (mousePosition.x - (typeof window !== 'undefined' ? window.innerWidth : 0) / 2) * 0.02,
-                y: (mousePosition.y - (typeof window !== 'undefined' ? window.innerHeight : 0) / 2) * 0.02,
-              }}
-              animate={{
-                rotateX: [0, 5, 0],
-                rotateY: [0, 5, 0],
-              }}
-              transition={{ duration: 4, repeat: Infinity }}
-            >
-              <motion.div
-                className="absolute inset-0 rounded-full bg-gradient-to-r from-cyan-400/30 to-purple-600/30 blur-2xl"
-                animate={{
-                  scale: [1, 1.1, 1],
-                  opacity: [0.5, 0.8, 0.5],
-                }}
-                transition={{ duration: 3, repeat: Infinity }}
-              />
-            </motion.div>
-          )}
-        </div>
-
-        {/* Hero Content */}
-        <div className="relative z-10 max-w-4xl mx-auto px-6">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
-            className="text-center"
-          >
-            <h1 className="text-6xl md:text-8xl font-black mb-6 leading-tight">
-              <span className="bg-gradient-to-r from-zinc-900 via-zinc-600 to-zinc-900 bg-clip-text text-transparent dark:from-white dark:via-cyan-200 dark:to-white">
-                Use all AI models,
-              </span>
-              <br />
-              <motion.span
-                className="inline-block bg-gradient-to-r from-[#ffb4d3] via-[#ffd27a] to-[#7ae1ff] bg-clip-text text-transparent"
-                animate={{ scale: [1, 1.05, 1] }}
-                transition={{ duration: 3, repeat: Infinity }}
-              >
-                together at last
-              </motion.span>
-          </h1>
-
-            <motion.p
-              className="text-xl text-zinc-600 dark:text-zinc-400 max-w-2xl mx-auto mb-12 leading-relaxed"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.3, duration: 0.8 }}
-            >
-              AI models and professional editing tools in one node-based platform. Turn creative vision into scalable workflows without compromising quality.
-            </motion.p>
-
-            {/* Floating AI Model Names */}
-            <div className="relative h-20 mb-12 overflow-hidden">
-              <div className="flex flex-wrap justify-center gap-4">
-                {models.map((model, i) => (
-                  <motion.div
-                    key={model}
-                    className="text-sm font-semibold text-yellow-300 opacity-0"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: [0, 1, 0], y: [-20, 0, -40] }}
-                    transition={{
-                      delay: i * 0.1,
-                      duration: 3,
-                      repeat: Infinity,
-                    }}
-                  >
-                    {model}
-                  </motion.div>
+        <div className="relative z-10 max-w-7xl mx-auto px-6">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
+            <div className="lg:col-span-6">
+              <h1 className="display text-6xl md:text-7xl leading-[1.02] mb-6">
+                Design anything
+                <br /> with every AI model
+              </h1>
+              <p className="text-lg text-zinc-600 dark:text-zinc-400 max-w-xl mb-8">
+                Karate AI – Design Studio. Compose images, videos, vectors and 3D with precise art direction, reusable nodes and live collaboration.
+              </p>
+              <div className="flex items-center gap-2 md:gap-3 flex-wrap">
+                {['Crop','Invert','Outpaint','Inpaint','Mask Extractor','Upscale','Channels','Relight','Image Describer','Z Depth Extractor'].map((t) => (
+                  <span key={t} className="chip chip-light dark:chip-dark">{t}</span>
                 ))}
               </div>
+              <div className="mt-8 flex items-center gap-3 flex-wrap">
+                <a href="/dashboard" className="btn-primary">Start Now</a>
+                <a href="#models" className="btn-secondary">Explore Engines</a>
+              </div>
             </div>
-
-            {/* CTA Buttons */}
-            <motion.div
-              className="flex items-center justify-center gap-4 flex-wrap"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.5, duration: 0.8 }}
-            >
-              <motion.a
-                href="/dashboard"
-                className="px-8 py-4 text-black font-bold rounded-lg transition-all bg-gradient-to-r from-[#ffe177] via-[#ffc3b0] to-[#9ef8ff] hover:brightness-110"
-                whileHover={{ scale: 1.05, boxShadow: '0 0 30px rgba(250, 204, 21, 0.6)' }}
-                whileTap={{ scale: 0.95 }}
-              >
-                Open Dashboard →
-              </motion.a>
-              <motion.button
-                className="px-8 py-4 border-2 border-zinc-300 text-zinc-900 dark:border-zinc-600 dark:text-white font-bold rounded-lg hover:border-zinc-900 dark:hover:border-white transition-all"
-                whileHover={{ scale: 1.05, borderColor: '#fff' }}
-                whileTap={{ scale: 0.95 }}
-              >
-                Explore Features
-              </motion.button>
-            </motion.div>
-          </motion.div>
+            <div className="lg:col-span-6">
+              <div className="relative h-[70vh] lg:h-[75vh] overflow-hidden">
+                <div className="marquee-vertical">
+                  <div className="marquee-track">
+                    {[...Array(2)].map((_, loopIndex) => (
+                      <div key={loopIndex} className="space-y-5 select-none">
+                        {marqueeModels.map((m) => (
+                          <div key={`${m}-${loopIndex}`} className="marquee-item text-[48px] md:text-[64px] xl:text-[80px] font-black leading-none">
+                            {m}
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* Features Section */}
+      {/* Creator Studio section (tagline + mini flow preview) */
+      }
+      <section className="relative py-28 grid-bg overflow-hidden">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex flex-col items-center text-center">
+            <h2 className="display text-5xl md:text-7xl mb-6">
+              Built for <span className="gradient-text-primary">Creators</span>
+            </h2>
+            <p className="text-lg text-zinc-600 dark:text-zinc-400 max-w-2xl">
+              Turn prompts into direction. Sketch a flow once, then remix it endlessly—batch images, refine color, relight scenes, upscale, animate and export. Everything stays editable.
+            </p>
+          </div>
+
+          <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[
+              { src: '/images/flow-2.jpg', label: 'Stable Diffusion' },
+              { src: '/images/flow-1.jpg', label: 'Flux Pro 1.1' },
+              { src: '/images/flow-3.jpg', label: 'Minimax Video' },
+            ].map((card, idx) => (
+              <motion.div
+                key={card.label}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.05, duration: 0.6 }}
+                viewport={{ once: true }}
+                className="rounded-2xl overflow-hidden border border-zinc-200 dark:border-zinc-800 bg-white/60 dark:bg-zinc-900/40 backdrop-blur shadow-lg"
+                whileHover={{ y: -6 }}
+              >
+                <div className="aspect-[16/11]">
+                  <img src={card.src} alt={card.label} className="w-full h-full object-cover" />
+                </div>
+                <div className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-300">{card.label}</div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <motion.section
+        id="features"
         className="relative py-32 px-6"
         initial={{ opacity: 0 }}
         whileInView={{ opacity: 1 }}
@@ -271,7 +287,6 @@ export default function Home() {
             In one seamless workflow
           </p>
 
-          {/* Tools Grid with Parallax */}
           <div className="relative h-96 md:h-[500px]">
             <motion.div
               className="absolute inset-0 rounded-3xl overflow-hidden border border-zinc-200 dark:border-zinc-800"
@@ -295,7 +310,6 @@ export default function Home() {
               </div>
             </motion.div>
 
-            {/* Floating Tool Labels */}
             {tools.map((tool, i) => (
               <motion.div
                 key={tool.name}
@@ -314,9 +328,9 @@ export default function Home() {
         </div>
       </motion.section>
 
-      {/* AI Models Showcase */}
       <motion.section
-        className="relative py-32 px-6 bg-gradient-to-b from-black via-slate-950 to-black"
+        id="models"
+        className="relative py-32 px-6 models-surface"
         initial={{ opacity: 0 }}
         whileInView={{ opacity: 1 }}
         transition={{ duration: 0.8 }}
@@ -324,92 +338,73 @@ export default function Home() {
       >
         <div className="max-w-6xl mx-auto">
           <motion.h2
-            className="text-5xl md:text-6xl font-black text-center mb-20"
+            className="text-5xl md:text-6xl font-black text-center mb-6"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
             viewport={{ once: true }}
           >
-            Powered by the best
-            <br />
-            <span className="bg-gradient-to-r from-yellow-300 to-cyan-400 bg-clip-text text-transparent">
-              AI models available
-            </span>
+            Powered by world‑class engines
           </motion.h2>
+          <p className="text-center text-zinc-500 dark:text-zinc-400 max-w-3xl mx-auto">
+            We route each task to the right model—keeping your visuals consistent, fast and production‑ready.
+          </p>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-16">
             {[
-              { title: 'Image Generation', models: ['Flux Pro 1.1 Ultra', 'Stable Diffusion 3.5', 'DALL·E 3', 'Ideogram V3'] },
-              { title: 'Video Generation', models: ['Runway Gen-4', 'Minimax Video', 'Luma Ray 2', 'Veo 3'] },
-              { title: '3D & Advanced', models: ['Kling', 'Rodin 2.0', 'Trellis 3D', 'Recraft V3'] },
+              { title: 'Image', note: 'photoreal, stylized, vector', models: ['Flux Pro 1.1 Ultra', 'Stable Diffusion 3.5', 'DALL·E 3', 'Ideogram V3', 'Recraft V3'] },
+              { title: 'Video', note: 'gen, reframe, modify', models: ['Runway Gen-4', 'Minimax Video', 'Luma Ray 2', 'Veo 3'] },
+              { title: '3D & Advanced', note: 'avatars, 3D, depth', models: ['Kling', 'Rodin 2.0', 'Trellis 3D', 'Wan'] },
             ].map((category, idx) => (
               <motion.div
                 key={category.title}
-                className="p-8 bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-zinc-700 rounded-2xl backdrop-blur"
+                className="card-glass glow-border p-8 rounded-2xl"
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 transition={{ delay: idx * 0.1, duration: 0.6 }}
                 viewport={{ once: true }}
-                whileHover={{ y: -5, borderColor: '#fcd34d' }}
+                whileHover={{ y: -6 }}
               >
-                <h3 className="text-lg font-bold mb-4 text-yellow-300">{category.title}</h3>
-                <ul className="space-y-3">
+                <div className="flex items-baseline justify-between mb-4">
+                  <h3 className="text-xl font-bold text-yellow-300">{category.title}</h3>
+                  <span className="badge badge-soft">{category.note}</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
                   {category.models.map((model) => (
-                    <motion.li
-                      key={model}
-                      className="text-zinc-300 text-sm flex items-center gap-2"
-                      whileHover={{ x: 5, color: '#fff' }}
-                    >
-                      <span className="w-2 h-2 bg-cyan-400 rounded-full" />
+                    <span key={model} className="badge badge-soft hover:brightness-110 transition-smooth">
                       {model}
-                    </motion.li>
+                    </span>
                   ))}
-                </ul>
+                </div>
               </motion.div>
             ))}
           </div>
         </div>
       </motion.section>
 
-      {/* Footer CTA */}
       <motion.section
-        className="relative py-20 px-6 border-t border-zinc-800"
+        className="relative py-20 px-6"
         initial={{ opacity: 0 }}
         whileInView={{ opacity: 1 }}
         transition={{ duration: 0.8 }}
         viewport={{ once: true }}
       >
-        <div className="max-w-4xl mx-auto text-center">
-          <motion.h2
-            className="text-4xl md:text-5xl font-black mb-8"
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
-            viewport={{ once: true }}
-          >
-            Ready to create
-            <br />
-            <span className="bg-gradient-to-r from-yellow-300 to-cyan-400 bg-clip-text text-transparent">
-              without limits?
-            </span>
-          </motion.h2>
-
-          <motion.a
-            href="/dashboard"
-            className="inline-block px-8 py-4 bg-yellow-400 text-black font-bold rounded-lg hover:bg-yellow-300 transition-all"
-            whileHover={{ scale: 1.05, boxShadow: '0 0 30px rgba(250, 204, 21, 0.6)' }}
-            whileTap={{ scale: 0.95 }}
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            transition={{ delay: 0.2, duration: 0.6 }}
-            viewport={{ once: true }}
-          >
-            Launch Dashboard →
-          </motion.a>
+        <div className="max-w-6xl mx-auto">
+          <div className="card-glass glow-border rounded-2xl p-10 flex flex-col md:flex-row items-center gap-8">
+            <div className="flex-1">
+              <h3 className="text-3xl md:text-4xl font-black mb-3">Open the Studio</h3>
+              <p className="text-zinc-500 dark:text-zinc-400 max-w-2xl">
+                Build a design workflow once and reuse it forever. Drag nodes, art‑direct outputs, and collaborate in real time.
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <a href="/dashboard" className="btn-primary">Open Studio →</a>
+              <a href="/docs" className="btn-secondary">Read Docs</a>
+            </div>
+          </div>
         </div>
       </motion.section>
 
-      {/* Footer */}
       <footer className="py-8 px-6 border-t border-zinc-800 text-center text-zinc-500 text-sm">
         <p>© {new Date().getFullYear()} Karate. All rights reserved.</p>
       </footer>

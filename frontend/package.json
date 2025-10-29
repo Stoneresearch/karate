@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@clerk/nextjs": "^6.34.0",
     "@convex-dev/react-query": "^0.0.0-202410",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
@@ -22,7 +23,7 @@
     "framer-motion": "^11.18.2",
     "highlight.js": "^11.11.1",
     "jotai": "^2.8.3",
-    "next": "15.0.0",
+    "next": "15.2.3",
     "next-themes": "^0.4.6",
     "react": "18.2.0",
     "react-dom": "18.2.0",
@@ -31,6 +32,7 @@
     "rehype-highlight": "^7.0.2",
     "rehype-slug": "^6.0.0",
     "remark-gfm": "^4.0.1",
+    "stripe": "^14.24.0",
     "tailwindcss-mcp-server": "^0.1.1",
     "three": "^0.160.0",
     "uploadthing": "^6.13.3",
@@ -43,7 +45,7 @@
     "@types/react-dom": "^18.2.23",
     "autoprefixer": "^10.4.20",
     "eslint": "^8.57.0",
-    "eslint-config-next": "^15.0.0",
+    "eslint-config-next": "^15.2.3",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.10",
     "typescript": "^5.6.2"

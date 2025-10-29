@@ -75,7 +75,11 @@ karate/
 │   ├── schema.ts                   # Database schema
 │   ├── workflows.ts                # Workflow queries & mutations
 │   └── _generated/                 # Auto-generated Convex API
-└── instruction.md                  # Full technical documentation
+└── docs/                           # Documentation (public + technical)
+    ├── GET_STARTED.md
+    ├── QUICK_START.md
+    ├── WORKFLOW_EDITOR_GUIDE.md
+    └── instruction.md              # Full technical documentation
 ```
 
 ---
@@ -122,6 +126,15 @@ npm run dev
 ```
 
 Your app will be available at `http://localhost:3000`
+
+**Terminal 3 (optional): Python Backend**
+```bash
+python3 -m venv backend/.venv && source backend/.venv/bin/activate
+python3 -m pip install -U pip
+python3 -m pip install -r backend/requirements.txt
+export INTERNAL_API_KEY=dev-secret
+python3 -m uvicorn backend.main:app --reload
+```
 
 ---
 
@@ -285,7 +298,7 @@ OPENAI_API_KEY=<your-key>
 
 ## 📚 Documentation
 
-See `instruction.md` for:
+See `docs/instruction.md` for:
 - Complete technical architecture
 - AI models list
 - Backend API endpoints

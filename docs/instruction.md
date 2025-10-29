@@ -1,9 +1,6 @@
-# **Karate: The Ultimate Technical & Design Bible**
-*Version 3.0 | October 2025*
+# Technical Documentation
 
----
-
-# **Table of Contents**
+## Guide Index
 1. [System Overview](#1-system-overview)
 2. [Tech Stack](#2-tech-stack)
 3. [Architecture](#3-architecture)
@@ -18,31 +15,31 @@
 12. [Data Flow & APIs](#12-data-flow--apis)
 13. [Error Handling](#13-error-handling)
 14. [CI/CD Pipeline](#14-cicd-pipeline)
-15. [Cost Optimization](#15-cost-optimization)
-16. [Roadmap](#16-roadmap)
-17. [Getting Started](#17-getting-started)
+15. [Roadmap](#15-roadmap)
+16. [Getting Started](#17-getting-started)
 
 ---
 
-# **1. System Overview**
-**Karate** is a **node-based AI workspace** that unifies **all AI models, editing tools, and workflows** into a single, collaborative platform. It is designed for **creative professionals, developers, and enterprises** who need **scalable, reusable, and automated** creative workflows.
+# 1. System Overview
+**Karate AI – Design Studio** is a **node-based AI workspace** that unifies **all AI models, editing tools, and workflows** into a single, collaborative platform. It is designed for **creative professionals, developers, and enterprises** who need **scalable, reusable, and automated** creative workflows.
 
-### **Key Features**
 - **All AI Models**: Image, video, 3D, and text models (see [full list](#6-ai-models--tools)).
 - **Professional Editing Tools**: Blur, invert, mask, relight, upscale, and more.
+- **Natural‑Language Builder**: Bottom AI input dock converts instructions into nodes and connections.
+- **Unified Context Menu**: Right‑click anywhere on a node (not just handles) for Duplicate/Delete/Settings.
 - **Real-Time Collaboration**: Multi-user editing with **Convex**.
 - **Internal AI Agents**: For support, workflow optimization, resource allocation, and fraud detection.
-- **Advanced Frontend**: Interactive animations, motion effects, and artistic UI/UX.
+- **Advanced Frontend**: Interactive animations, motion effects, and refined minimal UI/UX.
 
 ---
 
-# **2. Tech Stack**
+# 2. Tech Stack
 ## **2.1 Frontend**
 | **Component**          | **Technology**               | **Purpose**                                                                 | **Alternatives**               |
 |------------------------|-----------------------------|-----------------------------------------------------------------------------|--------------------------------|
-| Framework              | Next.js 15 (React 19)       | Fast, SEO-friendly, and scalable UI.                                      | Remix, SvelteKit              |
+| Framework              | Next.js 15 (React 18)       | Fast, SEO-friendly, and scalable UI.                                      | Remix, SvelteKit              |
 | Node Editor            | XYFlow                      | High-performance, customizable node editor.                              | Rete.js, React Flow           |
-| Styling               | Tailwind CSS + Radix UI     | Rapid UI development with accessible components.                        | Chakra UI, MUI                |
+| Styling               | Tailwind CSS + MUI + HeroUI | Rapid UI development with accessible components.                        | Chakra UI, Radix UI           |
 | State Management      | Zustand + Jotai             | Lightweight global/local state for complex workflows.                     | Redux, Recoil                 |
 | Real-Time Collaboration| Convex                     | Real-time database and serverless functions.                             | Firebase, PartyKit           |
 | Media Rendering       | WebGPU (WebGL fallback)     | High-performance rendering for previews and effects.                     | Three.js, PixiJS             |
@@ -56,7 +53,7 @@
 | API Framework          | FastAPI (Python)            | High-performance REST/WebSocket API.                                       | NestJS, Django                |
 | Real-Time Database     | Convex                     | Real-time database and serverless functions.                             | Firebase, PostgreSQL + Y.js   |
 | Storage               | AWS S3 + Cloudflare CDN    | Asset storage and global CDN.                                             | Backblaze, Google Cloud      |
-| Auth                  | NextAuth.js + Clerk         | Social logins, SSO, and secure sessions.                                   | Auth0, Supabase Auth         |
+| Auth                  | Clerk                       | Social logins, SSO, secure sessions.                                       | NextAuth.js, Auth0, Supabase |
 | Billing               | Stripe + Lemon Squeezy      | Subscriptions and payments.                                                | Paddle, PayPal                |
 | Compute               | AWS ECS + Modal Labs        | Auto-scaling for AI inference.                                             | Kubernetes, Fly.io          |
 | Queueing              | BullMQ (Redis)              | Job queue for AI tasks.                                                    | RabbitMQ, Celery             |
@@ -73,7 +70,7 @@
 
 ---
 
-# **3. Architecture**
+# 3. Architecture
 ## **3.1 High-Level Architecture**
 ```mermaid
 graph TD
@@ -102,31 +99,35 @@ sequenceDiagram
 
 ---
 
-# **4. Frontend**
+# 4. Frontend
 ## **4.1 Node Editor (XYFlow + Convex)**
 ### **Key Features**
 - Drag-and-drop nodes for AI models and editing tools.
 - Real-time collaboration with **Convex**.
 - Zoom/pan, undo/redo, and keyboard shortcuts.
+- Right‑click anywhere on a node to open actions (Duplicate, Delete, Settings).
+- AI input dock (bottom) to build workflows with natural language; collapsible/hidden; safe‑area aware.
 
 ### **Code Structure**
 ```bash
 frontend/
 ├── components/
 │   ├── NodeEditor/
-│   │   ├── NodeTypes/          # StableDiffusionNode.jsx, BlurNode.jsx, etc.
-│   │   ├── Canvas.jsx          # Main XYFlow canvas
-│   │   ├── Sidebar.jsx         # Tool/model sidebar
-│   │   └── Toolbar.jsx         # Zoom/undo/redo controls
+│   │   ├── NodeTypes/          # index.tsx registering custom nodes
+│   │   ├── Canvas.tsx          # Main XYFlow canvas
+│   │   └── Sidebar.tsx         # Model/tool sidebar
 │   ├── Realtime/
-│   │   └── Collaboration.jsx   # Convex integration
+│   │   └── Collaboration.tsx   # Convex hook (mock fallback if Convex dev not running)
 │   └── Media/
-│       └── Renderer.jsx        # WebGPU/WebGL rendering
+│       └── (reserved)
 ├── lib/
-│   ├── xyflow/                  # XYFlow config and utils
-│   └── convex/                  # Convex client setup
+│   └── convex/
+│       └── client.tsx          # Convex provider (uses NEXT_PUBLIC_CONVEX_URL)
 └── pages/
-    └── editor.jsx              # Main editor page
+    ├── editor.tsx              # Main editor page
+    ├── dashboard.tsx
+    ├── docs.tsx
+    └── index.tsx
 ```
 
 ### **Example: Custom Node (Stable Diffusion)**
@@ -154,6 +155,12 @@ export default function StableDiffusionNode({ id }) {
   );
 }
 ```
+
+### **TypeScript Frontend Types**
+- Shared editor types live in `frontend/components/NodeEditor/types.ts`:
+  - `PaletteItem`, `ContextMenuState`, and per-node data types (PromptData, ImageUploadData, etc.).
+- Replace any remaining `any` in Node components with explicit data types.
+- Use XYFlow’s `Node`/`Edge` generics where applicable for stricter typing.
 
 ### **Convex Integration**
 ```jsx
@@ -184,37 +191,81 @@ export default function Canvas({ roomId }) {
 }
 ```
 
+### **Context Menu plumbing (internal)**
+- Each node’s root wrapper listens for `contextmenu` and dispatches a custom event:
+  - `window.dispatchEvent(new CustomEvent('karate-node-contextmenu', { detail: { x, y, nodeId } }))`
+- The canvas listens and opens a node menu at the event coordinates. This ensures right‑click works anywhere in the node surface.
+
+### **AI Input Dock (internal)**
+- State: `agentOpen`, `agentHidden`, `agentInput`, `agentBusy`.
+- Placement: centered at bottom, offset by `calc(env(safe-area-inset-bottom) + 16px)`.
+- Parser: naive keyword matching for Prompt/Upload/Model/Tools to create a linear chain; safe default is Prompt → Stable Diffusion.
+- Future: replace with server-side planner in Convex or FastAPI.
+
+## **4.2 Theming & Global Styles**
+- Theming via `next-themes` (class-based dark mode)
+- Global styles in `frontend/styles/globals.css`
+- UI components: MUI and HeroUI
+
+### **Node Surface Styles (internal)**
+- `node-surface`, `node-title`, `node-input`, `node-textarea`, `node-btn`, `node-btn-primary` unify visual language across nodes.
+- Context menus/palette use `context-panel`, `context-search`, `context-item`.
+
+## **4.3 Pages (Pages Router)**
+- Landing: `frontend/pages/index.tsx`
+- Dashboard: `frontend/pages/dashboard.tsx`
+- Editor: `frontend/pages/editor.tsx`
+- Docs: `frontend/pages/docs.tsx`
+
+## **4.4 Realtime & Local Data**
+- Local storage for guest workflows on `dashboard.tsx`
+- Convex integration available; `Collaboration.tsx` provides a mock fallback when Convex dev server is not running
+
+## **4.5 Dashboard Behavior**
+- Minimal UI focused on quick actions.
+- Create new workflow via “New Project”; navigates to `editor?id=<workflowId>`.
+- Workflows are persisted in `localStorage` under `workflows`.
+- You can delete individual workflows (Delete button) or Clear All from the header.
+- Empty state guides the user to create the first project.
+
+## **4.6 Authentication (Clerk)**
+- Add Clerk provider at the app root; show Sign In/Out in the top bar.
+- Env required: `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`.
+- Gate advanced features (team collaboration, billing dashboard) behind sign-in.
+ - Middleware: protect `/editor`, `/dashboard`, `/api/run`; exclude `/api/stripe/webhook` (Stripe signature-verified).
+
+## **4.7 Workflow Outcomes (What users can create)**
+
+- Images: single/batch generations, variations, upscales (PNG/JPG, optionally WEBP).
+- Videos: short clips from prompts or sources, reframed/enhanced outputs (MP4).
+- Edited media: background removal, inpaint/outpaint, relight, color transforms.
+- Vector graphics: SVG logos/illustrations, text-to-vector conversions.
+- 3D assets: meshes/scenes for downstream tools (.glb/.gltf/.obj when those nodes are active).
+- Auxiliary artifacts: masks, depth maps, control images, prompts/metadata.
+- Reusable workflows: save graphs as templates for reproducible pipelines.
+
 ---
 
-# **5. Backend**
-## **5.1 FastAPI Structure**
+# 5. Backend
+## **5.1 FastAPI Structure (Current)**
 ```bash
 backend/
 ├── api/
-│   ├── v1/
-│   │   ├── workflows.py       # Legacy (migrate to Convex)
-│   │   ├── assets.py          # UploadThing + S3
-│   │   ├── ai.py              # AI model inference
-│   │   ├── agents.py          # Internal AI agents
-│   │   └── auth.py            # NextAuth + Clerk
-│   └── websocket.py           # Legacy (replace with Convex)
-├── core/
-│   ├── config.py              # Settings and env vars
-│   └── security.py            # Auth utilities
-├── db/
-│   ├── models.py              # Legacy PostgreSQL models
-│   └── session.py             # Database session
+│   └── v1/
+│       ├── ai.py              # AI inference endpoint (stubbed)
+│       └── agents.py          # Internal AI agents (stubbed)
+├── core/                      # Reserved for settings/security
+├── db/                        # Reserved for future DB models
 ├── workers/
-│   ├── tasks.py               # BullMQ tasks (AI inference)
-│   └── agents/                # AI agent logic
+│   └── tasks.py               # AI task stubs (to wire to providers)
 └── main.py                    # FastAPI app setup
 ```
 
 ### **Example: AI Inference Endpoint**
 ```python
-# api/v1/ai.py
+# backend/api/v1/ai.py
 from fastapi import APIRouter, Depends
-from workers.tasks import run_ai_model
+from backend.workers.tasks import run_ai_model
 
 router = APIRouter()
 
@@ -232,9 +283,9 @@ async def infer(
 
 ### **Example: AI Agent Endpoint**
 ```python
-# api/v1/agents.py
+# backend/api/v1/agents.py
 from fastapi import APIRouter
-import convex
+import httpx
 
 router = APIRouter()
 client = convex.ConvexClient("YOUR_CONVEX_URL")
@@ -252,7 +303,7 @@ async def support_agent(ticket: str):
 
 ---
 
-# **6. AI Models & Tools**
+# 6. AI Models & Tools
 ## **6.1 Complete List of AI Models**
 ### **Image Models**
 - Flux Pro 1.1 Ultra
@@ -331,7 +382,7 @@ async def run_ai_model(model: str, prompt: str, user_id: str):
 
 ---
 
-# **7. Convex Integration**
+# 7. Convex Integration
 ## **7.1 Schema**
 ```javascript
 // convex/schema.ts
@@ -341,20 +392,36 @@ import { v } from "convex/values";
 export default defineSchema({
   workflows: defineTable({
     title: v.string(),
-    nodes: v.array(v.any()), // XYFlow node data
-    owner: v.string(),       // User ID
+    nodes: v.array(v.any()),
+    edges: v.array(v.any()),
+    owner: v.string(),
     isPublic: v.boolean(),
-  }),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index('by_owner', ['owner']),
+
   users: defineTable({
     name: v.string(),
     email: v.string(),
     credits: v.number(),
-  }),
+    createdAt: v.number(),
+  }).index('by_email', ['email']),
+
   agents: defineTable({
-    type: v.string(),        // "support", "fraud", etc.
-    action: v.string(),       // e.g., "ticket_response"
-    data: v.any(),            // e.g., { ticket: "...", response: "..." }
-  }),
+    type: v.string(),
+    action: v.string(),
+    data: v.any(),
+    timestamp: v.number(),
+  }).index('by_type', ['type']),
+
+  runs: defineTable({
+    workflowId: v.id('workflows'),
+    userId: v.id('users'),
+    status: v.string(),
+    result: v.any(),
+    startedAt: v.number(),
+    completedAt: v.optional(v.number()),
+  }).index('by_workflow', ['workflowId']),
 });
 ```
 
@@ -364,47 +431,99 @@ export default defineSchema({
 // NOTE: Replace shimmed imports with `./_generated/server` after `npx convex dev`
 
 export const get = query({
-  args: { id: v.id("workflows") },
+  args: { id: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.id);
+    const workflows = await ctx.db.query('workflows').collect();
+    return workflows[0] || {
+      id: 'demo-room',
+      title: 'My First Flow',
+      nodes: [],
+      edges: [],
+      owner: 'demo-user',
+      isPublic: true,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
   },
 });
 
 export const update = mutation({
   args: {
-    id: v.id("workflows"),
-    nodes: v.array(v.any()),
+    id: v.any(),
+    title: v.optional(v.string()),
+    nodes: v.optional(v.array(v.any())),
+    edges: v.optional(v.array(v.any())),
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.id, { nodes: args.nodes });
+    const list = await ctx.db.query('workflows').collect();
+    if (list.length === 0) {
+      return await ctx.db.insert('workflows', {
+        title: args.title || 'My First Flow',
+        nodes: args.nodes || [],
+        edges: args.edges || [],
+        owner: 'demo-user',
+        isPublic: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+    }
+    const wf = list[0];
+    return await ctx.db.patch(wf._id, {
+      ...(args.title && { title: args.title }),
+      ...(args.nodes && { nodes: args.nodes }),
+      ...(args.edges && { edges: args.edges }),
+      updatedAt: Date.now(),
+    });
   },
 });
 ```
 
 ## **7.3 Frontend Integration**
 ```javascript
-// frontend/components/Realtime/Collaboration.jsx
-import { useQuery, useMutation } from "convex/react";
-import { api } from "../../../convex/_generated/api";
+// frontend/components/Realtime/Collaboration.tsx
+// Uses a mock fallback when Convex dev server isn't running.
+// Replace with useQuery/useMutation from 'convex/react' once `npx convex dev` generates types.
+```
 
-export function useWorkflow(roomId) {
-  const workflow = useQuery(api.workflows.get, { id: roomId });
-  const updateWorkflow = useMutation(api.workflows.update);
-  return { workflow, updateWorkflow };
-}
+## **7.4 TypeScript Types & Codegen (Important)**
+- Until `npx convex dev` generates `convex/_generated`, we provide shared types in `convex/types.ts` to avoid `any`.
+- Replace temporary shims with real imports when codegen is available:
+  - `import { query, mutation } from './_generated/server'`
+  - `import { v } from 'convex/values'`
+- Use strong types for all Convex functions:
+  - Args object type
+  - Return type (queries/mutations)
+  - Table `Id<'table'>` once available
+
+Example:
+```ts
+// convex/runs.ts
+export const create = mutation<{ workflowId: Id<'workflows'>; userId: Id<'users'>; input?: unknown }, Id<'runs'>>({
+  args: { workflowId: v.id('workflows'), userId: v.id('users'), input: v.optional(v.any()) },
+  handler: async (ctx, args) => { /* ... */ },
+});
 ```
 
 ---
 
-# **8. AI Agents**
-## **8.1 Agent Types**
-| **Agent**               | **Trigger**               | **Action**                                                                 | **Output**                          |
-|-------------------------|---------------------------|---------------------------------------------------------------------------|-------------------------------------|
-| **Support Agent**       | New Slack/email ticket    | Query Convex, draft response with GPT-4, post to Slack/email.         | Auto-reply or escalation.           |
-| **Workflow Agent**      | Cron job (daily)          | Analyze Convex workflows, suggest optimizations to dev team.             | Jira/GitHub issue.                  |
-| **Resource Agent**     | Cron job (every 10 mins)  | Monitor Convex/AWS usage, scale ECS tasks.                              | Slack alert + auto-scaling.         |
-| **Fraud Agent**         | User action (e.g., API call)| Detect anomalies in Convex, block/freeze accounts.                      | Slack alert + admin dashboard.      |
-| **Marketing Agent**     | User inactivity (7 days)  | Draft personalized email with engagement tips (Convex data).             | HubSpot email campaign.            |
+# 8. AI Agents
+## **8.1 Current MVP**
+- Backend endpoint: `POST /api/v1/agents/support` accepts `{ ticket: string }` and can post to Slack via `SLACK_WEBHOOK_URL` if set. Returns an acknowledgement.
+- Convex module: `convex/agents.ts` with `logAction` and `list` for agent event logging. Replace shims with generated imports after `npx convex dev`.
+
+### Environment
+```env
+INTERNAL_API_KEY=dev-secret           # protects backend routes
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/... (optional)
+```
+
+## **8.2 Planned Agents (Roadmap)**
+| **Agent**               | **Trigger**               | **Action**                                    | **Output**                 |
+|-------------------------|---------------------------|-----------------------------------------------|---------------------------|
+| Workflow Agent          | Cron (daily)              | Analyze workflows, suggest improvements       | Issue/task suggestions    |
+| Resource Agent          | Cron (10 min)             | Monitor usage, scale workloads                 | Slack alert + scaling     |
+| Fraud Agent             | User action               | Detect anomalies, flag accounts                | Slack alert + dashboard   |
+| Marketing Agent         | Inactivity (7 days)       | Draft email with tips                          | Email via provider        |
 
 ## **8.2 Agent Code Examples**
 ### **Support Agent (AWS Lambda)**
@@ -465,25 +584,114 @@ def scale_resources():
                 })
 ```
 
+## **8.3 Agent Job System (Internal Queue)**
+We use a Convex-backed queue for internal agents (e.g., marketing manager, weekly digest, churn checks).
+
+### Schema additions
+```
+// convex/schema.ts
+agent_jobs: defineTable({
+  type: v.string(),          // e.g., 'marketing.campaign'
+  status: v.string(),        // queued | claimed | completed | failed
+  payload: v.any(),
+  createdAt: v.number(),
+  claimedAt: v.optional(v.number()),
+  completedAt: v.optional(v.number()),
+  claimedBy: v.optional(v.id('users')),
+  result: v.optional(v.any()),
+  error: v.optional(v.string()),
+  priority: v.optional(v.number()),
+}).index('by_status', ['status']).index('by_type', ['type']).index('by_createdAt', ['createdAt'])
+```
+
+### Functions
+```
+// convex/agentsOps.ts
+export const enqueue(type, payload, priority?)
+export const claimNext({ type?, userId? })
+export const complete({ id, result? })
+export const fail({ id, error })
+export const list({ status?, type? })
+```
+
+### Marketing helpers
+```
+// convex/marketing.ts
+scheduleCampaign({ audience, templateId, metadata? })
+scheduleChurnCheck({ lookbackDays })
+scheduleWeeklyDigest({ audience })
+```
+
+### Worker pattern
+- A periodic runner (cron/Edge task/Convex scheduler) calls `claimNext()` by type and processes jobs.
+- On success call `complete({ id, result })`; on error `fail({ id, error })`.
+- Results can be written back to `runs`, `agents`, or notify Slack.
+
+### Access & Roles
+- Only `admin` and `staff` may enqueue/claim jobs by default.
+- End-user actions (like “request help”) create `tickets`; staff/agents can respond and optionally enqueue supporting jobs.
+
 ---
 
-# **9. Deployment**
-## **9.1 Convex**
-```bash
-npx convex deploy
-```
-Convex handles scaling, real-time sync, and serverless functions automatically.
+# 9. Deployment
+## **9.1 Prerequisites**
+- Node.js 18+
+- npm 9+
+- Vercel CLI: `npm install -g vercel`
+- Convex CLI: `npm install -g convex`
 
-## **9.2 Frontend (Vercel)**
+## **9.2 Environment Variables**
+- `NEXT_PUBLIC_CONVEX_URL`: production Convex URL used by the frontend
+
+## **9.3 Build Locally**
 ```bash
+cd frontend
+npm install
+npm run build
+npm run lint
+```
+
+## **9.4 Run Locally**
+```bash
+# Terminal 1: Frontend
+cd frontend
+npm run dev
+
+# Terminal 2: Backend (optional)
+python3 -m venv backend/.venv && source backend/.venv/bin/activate
+python3 -m pip install -U pip
+python3 -m pip install -r backend/requirements.txt
+export INTERNAL_API_KEY=dev-secret
+python3 -m uvicorn backend.main:app --reload
+```
+
+## **9.5 Deploy Frontend (Vercel)**
+```bash
+cd frontend
 vercel --prod
 ```
+Set `NEXT_PUBLIC_CONVEX_URL` in Vercel project settings.
 
-## **9.3 AI Agents**
-- **FastAPI**: Deploy to AWS ECS.
-- **Lambda**: `serverless deploy`.
+## **9.6 Deploy Backend (Convex)**
+```bash
+npx convex deploy --prod
+```
+Copy the production URL and set it as `NEXT_PUBLIC_CONVEX_URL`.
 
-## **9.4 Terraform for AWS**
+## **9.7 Verification**
+- Visit production domain
+- Test Dashboard, Editor, Docs
+- Check browser console for errors
+
+## **9.8 Troubleshooting**
+- Fix build/type errors locally
+- Confirm environment variables
+- Hard-refresh and clear caches
+
+## **9.9 Notes**
+Convex handles scaling, real-time sync, and serverless functions automatically.
+
+## **9.10 Terraform for AWS (optional)**
 ```hcl
 # main.tf
 provider "aws" {
@@ -514,7 +722,7 @@ resource "aws_ecs_task_definition" "backend" {
 
 ---
 
-# **10. Security & Compliance**
+# 10. Security & Compliance
 ## **10.1 Data Protection**
 - **Encryption**: AES-256 for data at rest, TLS 1.3 for data in transit.
 - **Access Control**: Row-level security in Convex.
@@ -527,7 +735,16 @@ resource "aws_ecs_task_definition" "backend" {
 
 ---
 
-# **11. Monitoring & Logging**
+# 10.3 Security Hardening (Production)
+- CORS: restrict to known domains only (no wildcards).
+- API Secrets: server-side only; never expose paid keys to the frontend.
+- Rate limiting: add limiter to sensitive endpoints (AI/agents).
+- Input allow-list: validate `model` against `MODEL_COSTS`.
+- Storage: use presigned URLs; avoid public buckets for private assets.
+- Logging: scrub secrets; enable Sentry.
+- Convex access: validate userId and ownership in mutations/queries.
+
+# 11. Monitoring & Logging
 ## **11.1 Tools**
 | **Tool**          | **Purpose**                                      |
 |-------------------|--------------------------------------------------|
@@ -554,7 +771,7 @@ resource "aws_ecs_task_definition" "backend" {
 
 ---
 
-# **12. Data Flow & APIs**
+# 12. Data Flow & APIs
 ## **12.1 Key API Endpoints (Current Codebase)**
 | **Endpoint**               | **Method** | **Body (JSON)**                              | **Auth**           | **Description**                                      |
 |----------------------------|------------|----------------------------------------------|--------------------|------------------------------------------------------|
@@ -579,7 +796,7 @@ sequenceDiagram
 
 ---
 
-# **13. Error Handling**
+# 13. Error Handling
 ## **13.1 Frontend Errors**
 | **Error**               | **Fallback**                                      |
 |-------------------------|---------------------------------------------------|
@@ -594,7 +811,7 @@ sequenceDiagram
 
 ---
 
-# **14. CI/CD Pipeline**
+# 14. CI/CD Pipeline
 ```yaml
 # .github/workflows/deploy.yml
 name: Deploy Karate
@@ -623,17 +840,11 @@ jobs:
 
 ---
 
-# **15. Cost Optimization**
-| **Area**               | **Strategy**                                      |
-|------------------------|---------------------------------------------------|
-| Convex                 | Use free tier for development, monitor usage.      |
-| AI Models              | Cache frequent prompts/responses in Convex.       |
-| AWS ECS                | Use spot instances for non-critical tasks.        |
-| S3 Storage             | Lifecycle rules to archive old assets.            |
+<!-- Section removed: Cost Optimization (keep instructions focused on implementation) -->
 
 ---
 
-# **16. Roadmap**
+# 16. Roadmap
 | **Phase**       | **Timeline**       | **Goals**                                                                                     |
 |-----------------|--------------------|------------------------------------------------------------------------------------------------|
 | **Phase 1**     | Month 1–3          | Launch MVP: Node editor, Convex integration, basic AI agents.                                |
@@ -643,7 +854,7 @@ jobs:
 
 ---
 
-# **17. Getting Started**
+# 17. Getting Started
 ## **17.1 Local Development (Updated)**
 ```bash
 git clone https://github.com/stoneresearch/karate.git
@@ -652,10 +863,11 @@ npm install
 npx convex dev  # Start Convex backend (generates convex/_generated)
 npm run dev     # Start Next.js frontend
 # Backend (optional)
-python -m venv backend/.venv && source backend/.venv/bin/activate
-pip install -r backend/requirements.txt
+python3 -m venv backend/.venv && source backend/.venv/bin/activate
+python3 -m pip install -U pip
+python3 -m pip install -r backend/requirements.txt
 export INTERNAL_API_KEY=dev-secret
-uvicorn backend.main:app --reload
+python3 -m uvicorn backend.main:app --reload
 ```
 
 ## **17.2 Deployment Guides**
@@ -665,275 +877,125 @@ uvicorn backend.main:app --reload
 
 ---
 
-# **Final Notes**
-- This document is **100% complete and up-to-date**.
+# Final Notes
+- Brand everywhere as **Karate AI – Design Studio**.
+- `docs/` is public, user-facing; keep it product-focused with no secrets.
+- This file is internal for developers/admins/LLMs; follow the Browser → Convex/FastAPI → Provider pattern and never expose secrets.
 - **Convex** replaces PostgreSQL + Y.js + PartyKit for real-time features.
 - **FastAPI/Lambda** remain for AI agents and complex logic.
 - **Frontend** uses Next.js + XYFlow + Convex for a seamless experience.
 
 ---
 
-# **18. Complete API Requirements & Setup**
+# 18. Complete API Requirements & Setup
 
-## **18.1 API Categories Overview**
+## 18.1 API Categories Overview
 
-### **🎨 IMAGE GENERATION (10 models)**
-- ✅ **Stability AI** - Stable Diffusion 3.5, SD3 Remove/Fill
-  - API: https://platform.stability.ai/keys
-  - Key: `STABILITY_API_KEY`
+### Image Generation
+- Stable Diffusion 3.5
+- GPT Image 1
+- Imagen 4
+- Imagen 4 Fast
+- Imagen 4 Ultra
+- Imagen 3
+- Imagen 3 Fast
+- Flux Pro 1.1 Ultra
+- Flux Dev Redux
+- Flux Canny Pro
+- Flux Depth Pro
+- DALL·E 3
+- Ideogram V3
+- Ideogram V2
+- Minimax Image
+- Bria
 
-- ✅ **Black Forest Labs** - Flux Pro/Dev/Canny/Depth
-  - API: https://api.flux.dev
-  - Key: `FLUX_API_KEY`
+### Video Generation & Editing
+- Runway Aleph
+- Runway Gen-4
+- Runway Gen-3
+- Luma Reframe
+- Luma Modify
+- Veo 3
+- Veo 3 Fast
+- Veo 3.1
+- Veo 3.1 Fast
+- Veo 2
+- Veo Text to Video
+- Veo Image to Video
+- Sora 2
+- Hunyuan Video to Video
 
-- ✅ **OpenAI** - DALL·E 3
-  - API: https://platform.openai.com/api-keys
-  - Key: `OPENAI_API_KEY`
+### Upscaling & Enhancers
+- Image Upscale / Clarity
+- Image Upscale / Real-ESRGAN
+- Real-ESRGAN Video Upscaler
+- Topaz Video Upscaler
+- Bria Upscale
+- Google Upscaler
+- Video Smoother
+- Frame Interpolation (Increase Frame-rate)
 
-- ✅ **Ideogram** - Ideogram V3, V2
-  - API: https://ideogram.ai/api
-  - Key: `IDEOGRAM_API_KEY`
+### Lip Sync & Animation
+- Omnihuman V1.5
+- Sync 2 Pro
+- Pixverse Lipsync
+- Kling AI Avatar
 
-- ✅ **Minimax** - Minimax Image
-  - API: https://minimax.io/api
-  - Key: `MINIMAX_API_KEY`
+### 3D Models
+- Rodin
+- Hunyuan 3D
+- Trellis
+- Meshy
 
-- ✅ **Bria** - Bria, Bria Upscale, Bria Replace BG
-  - API: https://bria.ai/api
-  - Key: `BRIA_API_KEY`
+### Advanced Models
+- Wan Vace Depth
+- Wan Vace Pose
+- Wan Vace Reframe
+- Wan Vace Outpaint
+- Wan 2.5
+- Wan 2.2
+- Wan 2.1 with LoRA
 
-### **🎬 VIDEO GENERATION (10 models)**
-- ✅ **Runway** - Gen-4, Gen-3, Aleph, Act-Two
-  - API: https://runwayml.com/api
-  - Key: `RUNWAY_API_KEY`
-
-- ✅ **Luma** - Reframe, Modify
-  - API: https://lumalabs.ai/api
-  - Key: `LUMA_API_KEY`
-
-- ✅ **Google** - Veo Text-to-Video, Image-to-Video
-  - API: https://cloud.google.com/vertex-ai/docs
-  - Key: `GOOGLE_API_KEY`
-
-- ✅ **OpenAI** - Sora 2
-  - Key: `OPENAI_API_KEY` (reuse)
-
-- ✅ **Hunyuan** - Video to Video, Hunyuan 3D
-  - API: https://hunyuan.tencent.com/api
-  - Key: `HUNYUAN_API_KEY`
-
-### **📈 UPSCALING (5 models)**
-- ✅ **Topaz Labs** - Video Upscaler
-  - API: https://topazlabs.com/api
-  - Key: `TOPAZ_API_KEY`
-
-- ✅ **Real-ESRGAN** - Video/Image Upscaler
-  - API: https://replicate.com
-  - Key: `REPLICATE_API_KEY`
-
-- ✅ **Bria Upscale** (covered above)
-  - Key: `BRIA_API_KEY`
-
-- ✅ **Clarity** - Image Upscale
-  - API: https://clarity.ai/api
-  - Key: `CLARITY_API_KEY`
-
-### **🎤 LIP SYNC & ANIMATION (4 models)**
-- ✅ **Omnihuman** - V1.5
-  - API: https://omnihuman.ai/api
-  - Key: `OMNIHUMAN_API_KEY`
-
-- ✅ **Sync 2 Pro**
-  - API: https://sync.ai/api
-  - Key: `SYNC_API_KEY`
-
-- ✅ **Pixverse** - Lipsync
-  - API: https://pixverse.ai/api
-  - Key: `PIXVERSE_API_KEY`
-
-- ✅ **Kling** - AI Avatar
-  - API: https://kling.kuaishou.com/api
-  - Key: `KLING_API_KEY`
-
-### **🎪 3D MODELS (4 models)**
-- ✅ **Rodin**
-  - API: https://rodin.ai/api
-  - Key: `RODIN_API_KEY`
-
-- ✅ **Hunyuan 3D**
-  - Key: `HUNYUAN_API_KEY`
-
-- ✅ **Trellis**
-  - API: https://trellis.xyz/api
-  - Key: `TRELLIS_API_KEY`
-
-- ✅ **Meshy**
-  - API: https://meshy.ai/api
-  - Key: `MESHY_API_KEY`
-
-### **🔷 ADVANCED MODELS (7 models)**
-- ✅ **Wan** - Wan Vace series, Wan 2.x
-  - API: https://wan.ai/api
-  - Key: `WAN_API_KEY`
-
-### **🛠️ TOOLS & UTILITIES (18 tools)**
-- ✅ **Remove.bg** - Remove Background
-  - API: https://www.remove.bg/api
-  - Key: `REMOVEBG_API_KEY`
-
-- ✅ **Seedream** - Video editing
-  - API: https://seedream.ai/api
-  - Key: `SEEDREAM_API_KEY`
-
-- ✅ **Reve** - Video editing
-  - API: https://reve.ai/api
-  - Key: `REVE_API_KEY`
-
-- ✅ **Recraft** - Vector/SVG generation
-  - API: https://recraft.ai/api
-  - Key: `RECRAFT_API_KEY`
-
-- ✅ **Vectorizer** - Image to vector
-  - API: https://vectorizer.ai/api
-  - Key: `VECTORIZER_API_KEY`
+### Tools & Utilities
+- SD3 Remove Background
+- SD3 Content-Aware Fill
+- Bria Remove Background
+- Bria Content-Aware Fill
+- Replace Background / Bria Replace Background
+- Relight 2.0
+- Kolors Virtual Try On
+- Seedream V4 Edit
+- Reve Edit
+- Vectorizer (Image to vector)
+- Recraft V3 SVG
+- Text To Vector
+- Face Align
+- Nano Banana
+- Dreamshaper V8
+- Control / IPAdapter SDXL
+- ID Preservation – Flux
+- LoRA Control
+- Video to Audio
 
 ---
 
-## **18.2 Complete .env.local Setup**
+## **18.2 Environment Setup (MVP)**
 
 ```env
-# ============================================
-# IMAGE GENERATION APIs
-# ============================================
-STABILITY_API_KEY=sk-xxxxxxxxxxxxx
-STABILITY_ENDPOINT=https://api.stability.ai/v1
+# Frontend
+NEXT_PUBLIC_CONVEX_URL=http://localhost:3210
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_xxx
 
-FLUX_API_KEY=xxxxxxxxxxxxx
-FLUX_ENDPOINT=https://api.flux.dev/v1
+# Backend
+INTERNAL_API_KEY=dev-secret
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...   # optional
+CLERK_SECRET_KEY=sk_test_xxx
+STRIPE_SECRET_KEY=sk_test_xxx
+STRIPE_WEBHOOK_SECRET=whsec_xxx
 
-OPENAI_API_KEY=sk-xxxxxxxxxxxxx
-OPENAI_MODEL=dall-e-3
-
-IDEOGRAM_API_KEY=xxxxxxxxxxxxx
-IDEOGRAM_ENDPOINT=https://ideogram.ai/v1
-
-MINIMAX_API_KEY=xxxxxxxxxxxxx
-MINIMAX_ENDPOINT=https://minimax.io/v1
-
-BRIA_API_KEY=xxxxxxxxxxxxx
-BRIA_ENDPOINT=https://bria.ai/v1
-
-# ============================================
-# VIDEO GENERATION APIs
-# ============================================
-RUNWAY_API_KEY=xxxxxxxxxxxxx
-RUNWAY_ENDPOINT=https://api.runwayml.com/v1
-
-LUMA_API_KEY=xxxxxxxxxxxxx
-LUMA_ENDPOINT=https://lumalabs.ai/v1
-
-GOOGLE_API_KEY=xxxxxxxxxxxxx
-GOOGLE_ENDPOINT=https://cloud.google.com/vertex-ai
-
-SORA_API_KEY=xxxxxxxxxxxxx
-SORA_ENDPOINT=https://api.openai.com
-
-HUNYUAN_API_KEY=xxxxxxxxxxxxx
-HUNYUAN_ENDPOINT=https://hunyuan.tencent.com/v1
-
-# ============================================
-# UPSCALING APIs
-# ============================================
-TOPAZ_API_KEY=xxxxxxxxxxxxx
-TOPAZ_ENDPOINT=https://topazlabs.com/api
-
-CLARITY_API_KEY=xxxxxxxxxxxxx
-CLARITY_ENDPOINT=https://clarity.ai/v1
-
-REPLICATE_API_KEY=r8_xxxxxxxxxxxxx
-REPLICATE_ENDPOINT=https://api.replicate.com/v1
-
-# ============================================
-# LIP SYNC & ANIMATION APIs
-# ============================================
-OMNIHUMAN_API_KEY=xxxxxxxxxxxxx
-OMNIHUMAN_ENDPOINT=https://omnihuman.ai/v1
-
-SYNC_API_KEY=xxxxxxxxxxxxx
-SYNC_ENDPOINT=https://sync.ai/v1
-
-PIXVERSE_API_KEY=xxxxxxxxxxxxx
-PIXVERSE_ENDPOINT=https://pixverse.ai/v1
-
-KLING_API_KEY=xxxxxxxxxxxxx
-KLING_ENDPOINT=https://kling.kuaishou.com/v1
-
-# ============================================
-# 3D MODELS APIs
-# ============================================
-RODIN_API_KEY=xxxxxxxxxxxxx
-RODIN_ENDPOINT=https://rodin.ai/v1
-
-TRELLIS_API_KEY=xxxxxxxxxxxxx
-TRELLIS_ENDPOINT=https://trellis.xyz/v1
-
-MESHY_API_KEY=xxxxxxxxxxxxx
-MESHY_ENDPOINT=https://meshy.ai/v1
-
-# ============================================
-# ADVANCED MODELS - WAN
-# ============================================
-WAN_API_KEY=xxxxxxxxxxxxx
-WAN_ENDPOINT=https://wan.ai/v1
-
-# ============================================
-# TOOLS & UTILITIES
-# ============================================
-REMOVEBG_API_KEY=xxxxxxxxxxxxx
-REMOVEBG_ENDPOINT=https://api.remove.bg/v1
-
-SEEDREAM_API_KEY=xxxxxxxxxxxxx
-SEEDREAM_ENDPOINT=https://seedream.ai/v1
-
-REVE_API_KEY=xxxxxxxxxxxxx
-REVE_ENDPOINT=https://reve.ai/v1
-
-RECRAFT_API_KEY=xxxxxxxxxxxxx
-RECRAFT_ENDPOINT=https://recraft.ai/v1
-
-VECTORIZER_API_KEY=xxxxxxxxxxxxx
-VECTORIZER_ENDPOINT=https://vectorizer.ai/v1
-
-# ============================================
-# STORAGE
-# ============================================
-AWS_ACCESS_KEY_ID=xxxxxxxxxxxxx
-AWS_SECRET_ACCESS_KEY=xxxxxxxxxxxxx
-AWS_REGION=us-east-1
-AWS_S3_BUCKET=karate-uploads
-
-# ============================================
-# PAYMENT & BILLING
-# ============================================
-STRIPE_SECRET_KEY=sk_live_xxxxxxxxxxxxx
-STRIPE_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxx
-
-# ============================================
-# AUTHENTICATION
-# ============================================
-CLERK_SECRET_KEY=sk_live_xxxxxxxxxxxxx
-
-# ============================================
-# MONITORING
-# ============================================
-SENTRY_AUTH_TOKEN=sntrys_xxxxxxxxxxxxx
-
-# ============================================
-# WORKFLOW CONFIG
-# ============================================
-WORKFLOW_EXECUTION_TIMEOUT=300
-WORKFLOW_MAX_NODES=100
-WORKFLOW_MAX_CONNECTIONS=500
+# Future (add when implemented)
+# STABILITY_API_KEY=...
+# OPENAI_API_KEY=...
 ```
 
 ---
@@ -971,15 +1033,7 @@ User clicks   Uses hidden key        Processes
 Gets result ← Returns result ← Returns to Convex
 ```
 
-### **Billing Model**
-```
-User pays $10/month
-         ↓
-Your account receives $10
-         ├→ Pay Stability AI $5/month
-         ├→ Pay OpenAI $3/month
-         └→ Keep $2/month profit
-```
+<!-- Billing model removed to keep the guide implementation-focused -->
 
 ---
 
@@ -1034,22 +1088,7 @@ export const generateImageWithStability = mutation({
 
 ---
 
-## **18.5 Estimated Monthly Costs**
-
-| Provider | Free Tier | Paid Tier | Use Case |
-|----------|-----------|-----------|----------|
-| Stability AI | $5/mo | $10-100/mo | Stable Diffusion |
-| OpenAI | - | $15/mo | DALL-E + Sora |
-| Replicate | Free | $1-50/mo | Hosting models |
-| Runway | $0 | $15-50/mo | Video generation |
-| Luma | Free | $10-50/mo | Video enhancement |
-| Google | - | $0-100/mo | Veo + Cloud |
-| AWS S3 | 12mo free | $5-50/mo | Storage |
-| Stripe | - | 2.9% + $0.30 | Payments |
-
-**Estimated Total: $80-500/month** (depending on usage)
-
----
+<!-- Subsection removed: Estimated Monthly Costs -->
 
 ## **18.6 Setup Checklist for Admins/Developers**
 
@@ -1090,4 +1129,4 @@ export const generateImageWithStability = mutation({
 
 ---
 
-**Summary**: You need 40+ API keys to support all 60+ models. Use Convex to proxy all calls and keep keys secret!
+**Note**: Keep paid API keys server-side and proxy via Convex or FastAPI. Expand providers incrementally as integrations land.

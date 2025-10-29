@@ -5,7 +5,7 @@ import { useRouter } from 'next/router';
 const Canvas = dynamic(() => import('../components/NodeEditor/Canvas'), {
   ssr: false,
   loading: () => (
-    <div className="h-screen w-screen bg-black flex items-center justify-center">
+    <div className="h-screen w-screen bg-white text-zinc-900 dark:bg-black dark:text-white flex items-center justify-center">
       <motion.div
         className="text-center"
         initial={{ opacity: 0, y: 20 }}
@@ -21,7 +21,7 @@ const Canvas = dynamic(() => import('../components/NodeEditor/Canvas'), {
             ⚙️
           </motion.div>
         </div>
-        <p className="text-zinc-400 text-sm font-medium">Loading editor...</p>
+        <p className="text-zinc-600 dark:text-zinc-400 text-sm font-medium">Loading editor...</p>
       </motion.div>
     </div>
   ),
@@ -33,7 +33,7 @@ export default function EditorPage() {
 
   return (
     <motion.div
-      className="h-screen w-screen"
+      className="h-screen w-screen bg-white text-zinc-900 dark:bg-black dark:text-white"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.5 }}
