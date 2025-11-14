@@ -108,6 +108,9 @@ What you get: high-quality base image with an additional refined edit.
 - Low quality: increase steps or add Upscale
 - Wrong result: adjust prompt/negative prompt
 - Missing project as a guest: use the same device and browser (local storage)
+- Convex data not syncing:
+  - Ensure `npx convex dev` is running
+  - If Convex is not on the default `http://localhost:3210`, set `NEXT_PUBLIC_CONVEX_URL` in `frontend/.env.local`
 
 ## Input/Output Compatibility
 - Prompt → Image Model: Prompt (text) connects into a model that accepts text input

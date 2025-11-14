@@ -1,5 +1,7 @@
 Here’s a **comprehensive, efficient, and profitable token system** tailored to your **50+ AI models and tools**, ensuring you cover compute costs while maximizing revenue and user satisfaction:
 
+Note: In this app, all paid provider calls should run on the server (Convex or FastAPI). The frontend invokes Convex functions so that provider API keys remain server-side and never leak to the browser.
+
 ---
 
 ## **1. Token System: Tiered Pricing by Model/Tool**

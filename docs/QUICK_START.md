@@ -7,6 +7,7 @@ Use this guide to create your first workflow.
 # Terminal 1 – Convex (realtime backend)
 npx convex dev
 ```
+The frontend defaults to `http://localhost:3210`. If your Convex dev URL differs, set `NEXT_PUBLIC_CONVEX_URL` in `frontend/.env.local`.
 
 ```bash
 # Terminal 2 – FastAPI backend
@@ -85,3 +86,6 @@ npm run dev
 - Use the dashboard to reopen existing projects
 - Check the browser console for errors during development
 - Clerk auth: ensure keys are set and origin is allowed in Clerk.
+- Convex:
+  - Ensure `npx convex dev` is running
+  - Set `NEXT_PUBLIC_CONVEX_URL` if not using the default `http://localhost:3210`

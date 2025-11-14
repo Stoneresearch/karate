@@ -37,7 +37,7 @@
 ## **2.1 Frontend**
 | **Component**          | **Technology**               | **Purpose**                                                                 | **Alternatives**               |
 |------------------------|-----------------------------|-----------------------------------------------------------------------------|--------------------------------|
-| Framework              | Next.js 15 (React 18)       | Fast, SEO-friendly, and scalable UI.                                      | Remix, SvelteKit              |
+| Framework              | Next.js 15 (React 19)       | Fast, SEO-friendly, and scalable UI.                                      | Remix, SvelteKit              |
 | Node Editor            | XYFlow                      | High-performance, customizable node editor.                              | Rete.js, React Flow           |
 | Styling               | Tailwind CSS + MUI + HeroUI | Rapid UI development with accessible components.                        | Chakra UI, Radix UI           |
 | State Management      | Zustand + Jotai             | Lightweight global/local state for complex workflows.                     | Redux, Recoil                 |
@@ -166,7 +166,7 @@ export default function StableDiffusionNode({ id }) {
 ```jsx
 // components/Realtime/Collaboration.jsx
 import { useQuery, useMutation } from "convex/react";
-import { api } from "../../../convex/_generated/api";
+import { api } from "../../lib/convex/api";
 
 export function useWorkflow(roomId) {
   const workflow = useQuery(api.workflows.get, { id: roomId });
@@ -218,8 +218,8 @@ export default function Canvas({ roomId }) {
 - Docs: `frontend/pages/docs.tsx`
 
 ## **4.4 Realtime & Local Data**
-- Local storage for guest workflows on `dashboard.tsx`
-- Convex integration available; `Collaboration.tsx` provides a mock fallback when Convex dev server is not running
+- Convex integration is active by default via `useQuery`/`useMutation`.
+- If Convex dev server is not running, the UI still loads but data will not sync until `npx convex dev` is started (frontend defaults to `http://localhost:3210`).
 
 ## **4.5 Dashboard Behavior**
 - Minimal UI focused on quick actions.
@@ -479,10 +479,13 @@ export const update = mutation({
 ```
 
 ## **7.3 Frontend Integration**
-```javascript
-// frontend/components/Realtime/Collaboration.tsx
-// Uses a mock fallback when Convex dev server isn't running.
-// Replace with useQuery/useMutation from 'convex/react' once `npx convex dev` generates types.
+```typescript
+// frontend/lib/convex/api.ts
+import { anyApi, componentsGeneric } from 'convex/server';
+export const api = anyApi;
+export const internal = anyApi;
+export const components = componentsGeneric();
+// Optional later: re-export from `convex/_generated/api` for typed references after `npx convex dev`.
 ```
 
 ## **7.4 TypeScript Types & Codegen (Important)**

@@ -17,6 +17,8 @@
 - Required environment variables:
   - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
   - `CLERK_SECRET_KEY`
+- Optional Convex URL override (frontend defaults to `http://localhost:3210`):
+  - `NEXT_PUBLIC_CONVEX_URL`
 - Steps:
   1) Create a Clerk application (`https://clerk.com`).
   2) Add your local domain to Allowed Origins (e.g., `http://localhost:3000`).
@@ -74,5 +76,8 @@
   - Verify `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` are set.
   - Ensure your origin is allowed in Clerk dashboard.
   - Hard-refresh and retry.
+- If Convex data does not appear:
+  - Make sure `npx convex dev` is running.
+  - If using a non-default port/URL, set `NEXT_PUBLIC_CONVEX_URL` in `frontend/.env.local`.
 
 

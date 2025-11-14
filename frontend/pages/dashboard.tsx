@@ -2,72 +2,79 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/router';
-import { SignedIn, SignedOut, UserButton } from '@clerk/nextjs';
+import { SignedIn, SignedOut, UserButton, useUser } from '@clerk/nextjs';
+import dynamic from 'next/dynamic';
+import { useQuery, useMutation } from 'convex/react';
+import { api } from '../lib/convex/api';
+import type { Id } from '../lib/convex/dataModel';
 
-type LocalWorkflow = {
-  id: string;
+type Workflow = {
+  _id: string;
   title: string;
-  createdAt: string;
-  nodes: number;
-  thumbnail: string | null;
+  createdAt: number | string | Date;
+  nodes?: unknown[];
 };
 
-export default function Dashboard() {
+function ConvexDashboard() {
   const router = useRouter();
   const pk = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || process.env.CLERK_PUBLISHABLE_KEY;
   const CLERK_ENABLED = typeof pk === 'string' && /^pk_(test|live)_[A-Za-z0-9]{20,}/.test(pk);
-  const [workflows, setWorkflows] = useState<LocalWorkflow[]>([]);
   const [loading, setLoading] = useState(false);
   const [isClient, setIsClient] = useState(false);
 
+  // Get workflows from Convex
+  const userId = (() => {
+    try {
+      return useUser().user?.id;
+    } catch {
+      return undefined;
+    }
+  })();
+  const owner = userId || 'demo-user';
+  const workflowsData = useQuery((api as any).workflows.list, { owner }) as Workflow[] | undefined;
+  const createWorkflow = useMutation((api as any).workflows.create);
+  const deleteWorkflowMutation = useMutation((api as any).workflows.deleteWorkflow);
+
   useEffect(() => {
     setIsClient(true);
-    loadWorkflows();
   }, []);
-
-  const loadWorkflows = async () => {
-    const saved = localStorage.getItem('workflows');
-    if (saved) {
-      const parsed = JSON.parse(saved) as LocalWorkflow[];
-      setWorkflows(parsed);
-    }
-  };
-
-  const persist = (items: LocalWorkflow[]) => {
-    setWorkflows(items);
-    localStorage.setItem('workflows', JSON.stringify(items));
-  };
 
   const createNewWorkflow = async (templateName?: string) => {
     setLoading(true);
-    const newWorkflow = {
-      id: `workflow-${Date.now()}`,
-      title: templateName || 'Untitled Workflow',
-      createdAt: new Date().toLocaleDateString(),
-      nodes: 0,
-      thumbnail: null,
-    };
-    const updated = [newWorkflow, ...workflows];
-    persist(updated);
-
-    setTimeout(() => {
-      router.push(`/editor?id=${newWorkflow.id}`);
+    try {
+      const workflowId = await createWorkflow({
+        title: templateName || 'Untitled Workflow',
+        owner: owner,
+      });
+      setTimeout(() => {
+        router.push(`/editor?id=${workflowId}`);
+        setLoading(false);
+      }, 300);
+    } catch (error) {
+      console.error('Failed to create workflow:', error);
       setLoading(false);
-    }, 300);
+    }
   };
 
   const openWorkflow = (id: string) => {
     router.push(`/editor?id=${id}`);
   };
 
-  const deleteWorkflow = (id: string) => {
-    const updated = workflows.filter((w) => w.id !== id);
-    persist(updated);
+  const deleteWorkflow = async (id: string) => {
+    try {
+      await deleteWorkflowMutation({ id: id as Id<'workflows'> });
+    } catch (error) {
+      console.error('Failed to delete workflow:', error);
+    }
   };
 
-  const clearAll = () => {
-    persist([]);
-  };
+  const workflows = workflowsData?.map((w) => ({
+    id: w._id,
+    title: w.title,
+    createdAt: new Date(w.createdAt).toLocaleDateString(),
+    nodes: w.nodes?.length || 0,
+    thumbnail: null,
+  })) || [];
 
   const templates = [
     { name: 'Image Generation', icon: '🎨', desc: 'Generate images with AI' },
@@ -100,15 +107,6 @@ export default function Dashboard() {
                 </SignedIn>
               </>
             ) : null}
-            {workflows.length > 0 && (
-              <button
-                onClick={clearAll}
-                className="btn-secondary text-xs px-3 py-1.5"
-                title="Clear all"
-              >
-                Clear All
-              </button>
-            )}
             <button
               onClick={() => createNewWorkflow('Untitled Project')}
               disabled={loading}
@@ -192,3 +190,84 @@ export default function Dashboard() {
     </main>
   );
 }
+
+function FallbackDashboard() {
+  const router = useRouter();
+  const [loading, setLoading] = useState(false);
+  const [isClient, setIsClient] = useState(false);
+  const pk = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || process.env.CLERK_PUBLISHABLE_KEY;
+  const CLERK_ENABLED = typeof pk === 'string' && /^pk_(test|live)_[A-Za-z0-9]{20,}/.test(pk);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  const createNewWorkflow = async () => {
+    setLoading(true);
+    console.warn('Convex not initialized; cannot create workflow. See CONVEX_SETUP.md.');
+    setLoading(false);
+  };
+
+  if (!isClient) return null;
+
+  return (
+    <main className="min-h-screen bg-white text-zinc-900 dark:bg-black dark:text-white">
+      <header className="sticky top-0 z-40 bg-white/80 dark:bg-zinc-900/80 backdrop-blur border-b border-zinc-200 dark:border-zinc-800">
+        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+          <Link href="/" className="font-bold tracking-tight">
+            KARATE
+          </Link>
+          <div className="flex items-center gap-2">
+            {CLERK_ENABLED ? (
+              <>
+                <SignedOut>
+                  <Link href="/sign-in" className="text-xs px-3 py-1.5 hidden md:inline-block">
+                    Sign in
+                  </Link>
+                </SignedOut>
+                <SignedIn>
+                  <UserButton afterSignOutUrl="/" appearance={{ elements: { avatarBox: 'w-7 h-7' } }} />
+                </SignedIn>
+              </>
+            ) : null}
+            <button
+              onClick={() => createNewWorkflow()}
+              disabled={loading}
+              className="btn-primary text-xs px-4 py-1.5 disabled:opacity-50"
+            >
+              {loading ? 'Creating…' : 'Convex not ready'}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <div className="px-4 py-6">
+        <div className="max-w-5xl mx-auto space-y-8">
+          <section className="hero-ambient rounded-2xl p-6 border border-zinc-200 dark:border-zinc-800">
+            <h1 className="text-heading-xl mb-2">Your Studio</h1>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">Create a new project or pick up where you left off. Everything is editable.</p>
+            <div className="mt-4 flex items-center gap-2">
+              <button onClick={() => createNewWorkflow()} disabled={loading} className="btn-primary">
+                {loading ? 'Creating…' : 'Convex not ready'}
+              </button>
+              <Link href="/docs" className="btn-secondary">Read Docs</Link>
+            </div>
+          </section>
+
+          <section>
+            <div className="card-glass glow-border rounded-2xl p-6 text-center">
+              <div className="text-sm text-zinc-600 dark:text-zinc-400">Convex not initialized. See CONVEX_SETUP.md.</div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function DashboardContent() {
+  const hasConvex = Boolean((api as any).workflows?.list);
+  return hasConvex ? <ConvexDashboard /> : <FallbackDashboard />;
+}
+
+export default dynamic(() => Promise.resolve(DashboardContent), { ssr: false });

@@ -1,18 +1,5 @@
-// Temporary shims for Convex types to satisfy TypeScript until `npx convex dev` is run.
-// Replace with real imports once Convex is configured:
-// import { defineSchema, defineTable } from 'convex/server';
-// import { v } from 'convex/values';
-const defineSchema = (schema: unknown) => schema;
-const defineTable = (shape: unknown) => ({ index: (_: string, __: string[]) => ({}) });
-const v = {
-  string: () => ({}),
-  boolean: () => ({}),
-  number: () => ({}),
-  any: () => ({}),
-  array: (_inner: unknown) => ({}),
-  optional: (_inner: unknown) => ({}),
-  id: (_: string) => ({}),
-};
+import { defineSchema, defineTable } from 'convex/server';
+import { v } from 'convex/values';
 
 export default defineSchema({
   workflows: defineTable({

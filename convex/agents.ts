@@ -1,8 +1,6 @@
-import type { AgentEvent, Ticket, TicketComment, TableId } from './types';
-type Ctx = { db: { query: (t: string) => { collect: () => Promise<unknown[]> }, insert: (t: string, d: unknown) => Promise<unknown>, patch: (id: unknown, d: unknown) => Promise<unknown> } };
-function query<A, R>(def: { args: Record<string, unknown>; handler: (ctx: Ctx, args: A) => Promise<R> | R }) { return def; }
-function mutation<A, R>(def: { args: Record<string, unknown>; handler: (ctx: Ctx, args: A) => Promise<R> | R }) { return def; }
-const v = { string: () => ({}), any: () => ({}), optional: (_: unknown) => ({}), id: (_: string) => ({}) };
+import { query, mutation } from './_generated/server';
+import { v } from 'convex/values';
+import type { Id } from './_generated/dataModel';
 
 // Log an agent action (e.g., support response, error event)
 export const logAction = mutation({
@@ -11,39 +9,45 @@ export const logAction = mutation({
     action: v.string(),   // e.g., "ticket_response", "error_logged"
     data: v.any(),        // arbitrary payload
   },
-  handler: async (ctx, args: { type: string; action: string; data: unknown }) => {
-    return (await ctx.db.insert('agents', {
+  handler: async (ctx, args) => {
+    return await ctx.db.insert('agents', {
       type: args.type,
       action: args.action,
       data: args.data,
       timestamp: Date.now(),
-    })) as unknown as TableId<'agents'>;
+    });
   },
 });
 
 // List actions by type (basic admin feed)
-export const list = query<{ type?: string }, AgentEvent[]>({
+export const list = query({
   args: { type: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const all = await ctx.db.query('agents').collect();
-    const events = all as AgentEvent[];
-    if (!args.type) return events.sort((a, b) => b.timestamp - a.timestamp);
-    return events.filter((a) => a.type === args.type).sort((a, b) => b.timestamp - a.timestamp);
+    let events;
+    if (args.type) {
+      events = await ctx.db
+        .query('agents')
+        .withIndex('by_type', (q) => q.eq('type', args.type!))
+        .collect();
+    } else {
+      events = await ctx.db.query('agents').collect();
+    }
+    return events.sort((a, b) => b.timestamp - a.timestamp);
   },
 });
 
 // Ticket CRUD for admin/staff/user support workflows
-export const createTicket = mutation<{ orgId: TableId<'organizations'>; createdBy: TableId<'users'>; title: string; description: string; priority?: string }, TableId<'tickets'>>({
+export const createTicket = mutation({
   args: {
-    orgId: v.any(), // v.id('organizations') when real types are available
-    createdBy: v.any(), // v.id('users')
+    orgId: v.id('organizations'),
+    createdBy: v.id('users'),
     title: v.string(),
     description: v.string(),
     priority: v.optional(v.string()),
   },
-  handler: async (ctx, args: { orgId: TableId<'organizations'>; createdBy: TableId<'users'>; title: string; description: string; priority?: string }) => {
+  handler: async (ctx, args) => {
     const now = Date.now();
-    return (await ctx.db.insert('tickets', {
+    return await ctx.db.insert('tickets', {
       orgId: args.orgId,
       createdBy: args.createdBy,
       assigneeId: undefined,
@@ -53,43 +57,49 @@ export const createTicket = mutation<{ orgId: TableId<'organizations'>; createdB
       description: args.description,
       createdAt: now,
       updatedAt: now,
-    })) as unknown as TableId<'tickets'>;
+    });
   },
 });
 
-export const assignTicket = mutation<{ id: TableId<'tickets'>; assigneeId: TableId<'users'> }, Ticket>({
-  args: { id: v.any(), assigneeId: v.any() },
-  handler: async (ctx, args: { id: TableId<'tickets'>; assigneeId: TableId<'users'> }) => {
-    return (await ctx.db.patch(args.id, { assigneeId: args.assigneeId, updatedAt: Date.now() })) as unknown as Ticket;
+export const assignTicket = mutation({
+  args: { id: v.id('tickets'), assigneeId: v.id('users') },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.id, { assigneeId: args.assigneeId, updatedAt: Date.now() });
+    return await ctx.db.get(args.id);
   },
 });
 
-export const updateTicketStatus = mutation<{ id: TableId<'tickets'>; status: 'open' | 'in_progress' | 'closed' }, Ticket>({
-  args: { id: v.any(), status: v.string() },
-  handler: async (ctx, args: { id: TableId<'tickets'>; status: 'open' | 'in_progress' | 'closed' }) => {
-    return (await ctx.db.patch(args.id, { status: args.status, updatedAt: Date.now() })) as unknown as Ticket;
+export const updateTicketStatus = mutation({
+  args: { id: v.id('tickets'), status: v.string() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.id, { status: args.status, updatedAt: Date.now() });
+    return await ctx.db.get(args.id);
   },
 });
 
-export const addTicketComment = mutation<{ ticketId: TableId<'tickets'>; authorId: TableId<'users'>; body: string }, TableId<'ticket_comments'>>({
-  args: { ticketId: v.any(), authorId: v.any(), body: v.string() },
-  handler: async (ctx, args: { ticketId: TableId<'tickets'>; authorId: TableId<'users'>; body: string }) => {
-    return (await ctx.db.insert('ticket_comments', {
+export const addTicketComment = mutation({
+  args: { ticketId: v.id('tickets'), authorId: v.id('users'), body: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert('ticket_comments', {
       ticketId: args.ticketId,
       authorId: args.authorId,
       body: args.body,
       createdAt: Date.now(),
-    })) as unknown as TableId<'ticket_comments'>;
+    });
   },
 });
 
-export const listTicketsByOrg = query<{ orgId: TableId<'organizations'>; status?: string }, Ticket[]>({
-  args: { orgId: v.any(), status: v.optional(v.string()) },
+export const listTicketsByOrg = query({
+  args: { orgId: v.id('organizations'), status: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const all = await ctx.db.query('tickets').collect();
-    const filtered = (all as Ticket[]).filter((t) => String(t.orgId) === String(args.orgId));
-    const byStatus = args.status ? filtered.filter((t) => t.status === args.status) : filtered;
-    return byStatus.sort((a, b) => b.updatedAt - a.updatedAt);
+    let tickets = await ctx.db
+      .query('tickets')
+      .withIndex('by_org', (q) => q.eq('orgId', args.orgId))
+      .collect();
+    if (args.status) {
+      tickets = tickets.filter((t) => t.status === args.status);
+    }
+    return tickets.sort((a, b) => b.updatedAt - a.updatedAt);
   },
 });
 

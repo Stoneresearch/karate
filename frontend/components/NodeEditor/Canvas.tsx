@@ -24,7 +24,7 @@ import { useTheme } from 'next-themes';
 import { Button, Tooltip } from '@mui/material';
 import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/nextjs';
 const pk = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || process.env.CLERK_PUBLISHABLE_KEY;
-const CLERK_ENABLED = typeof pk === 'string' && /^pk_(test|live)_[A-Za-z0-9]{20,}/.test(pk);
+const CLERK_ENABLED = typeof pk === 'string' && pk.startsWith('pk_') && pk.length > 16;
 import UndoIcon from '@mui/icons-material/Undo';
 import RedoIcon from '@mui/icons-material/Redo';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
@@ -288,7 +288,7 @@ function CanvasContent({
     if (workflow?.edges && workflow.edges.length > 0) {
       setEdges(workflow.edges);
     }
-  }, [workflow?.id]);
+  }, [workflow?._id]);
 
   // Persist layout and preferences
   useEffect(() => {
@@ -442,10 +442,11 @@ function CanvasContent({
         'Wan2.1 With Lora': 'wan-2-1-lora',
       };
       const model = modelMap[modelLabel] || 'stable-diffusion-3.5';
+      const workflowId = workflow?._id || roomId;
       const res = await fetch('/api/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model, prompt: promptText }),
+        body: JSON.stringify({ model, prompt: promptText, workflowId }),
       });
       const data = await res.json().catch(() => null);
       const outputUrl = (data && (data.output_url || data.url)) as string | undefined;

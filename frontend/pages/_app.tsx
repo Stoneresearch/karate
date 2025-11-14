@@ -5,6 +5,7 @@ import { ClerkProvider } from '@clerk/nextjs';
 import { ThemeProvider, useTheme } from 'next-themes';
 import { Inter, Space_Grotesk } from 'next/font/google';
 import Head from 'next/head';
+import { useEffect, useState } from 'react';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
 const grotesk = Space_Grotesk({ subsets: ['latin'], variable: '--font-display' });
@@ -12,8 +13,8 @@ const grotesk = Space_Grotesk({ subsets: ['latin'], variable: '--font-display' }
 export default function App({ Component, pageProps }: AppProps) {
   function ThemeToggle() {
     const { theme, setTheme } = useTheme();
-    const [mounted, setMounted] = require('react').useState(false);
-    require('react').useEffect(() => setMounted(true), []);
+    const [mounted, setMounted] = useState(false);
+    useEffect(() => setMounted(true), []);
     if (!mounted) return null;
     return (
       <button
@@ -46,7 +47,7 @@ export default function App({ Component, pageProps }: AppProps) {
   }
 
   const pk = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || process.env.CLERK_PUBLISHABLE_KEY;
-  const isValidPk = typeof pk === 'string' && /^pk_(test|live)_[A-Za-z0-9]{20,}/.test(pk);
+  const isValidPk = typeof pk === 'string' && pk.startsWith('pk_') && pk.length > 16;
   const AppShell = (
     <ConvexProviderRoot>
       <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
