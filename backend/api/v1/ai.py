@@ -38,10 +38,14 @@ async def get_models():
 @router.post("/infer")
 async def infer(req: InferRequest, x_user_id: Optional[str] = Header(default=None), _: Optional[bool] = Depends(get_api_key)):
     model = req.model
-    if model not in MODEL_COSTS:
+    
+    # Allow known models OR valid Replicate slugs (owner/name)
+    if model not in MODEL_COSTS and "/" not in model:
         raise HTTPException(status_code=400, detail="Unknown model")
     
-    uid = x_user_id or "demo-user"
+    uid = x_user_id
+    if not uid:
+        raise HTTPException(status_code=401, detail="Missing user ID")
     # New async path: return task_id immediately
     # Pass all extra arguments as kwargs
     extra_params = {

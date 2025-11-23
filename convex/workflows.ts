@@ -13,19 +13,11 @@ export const getOrCreate = mutation({
   args: { id: v.optional(v.id('workflows')), title: v.optional(v.string()), owner: v.optional(v.string()) },
   handler: async (ctx: any, args: any) => {
     const identity = await ctx.auth.getUserIdentity();
-    // Enforce auth if not merely reading public/shared logic (though this is getOrCreate)
     if (!identity) {
-        // For now, throw or allow 'demo-user' if that's the intended public playground behavior?
-        // Given user request "not safe", we should probably enforce auth or at least validate.
-        // But to keep current frontend working if user is NOT logged in (demo mode), we might need to allow it.
-        // However, better to require auth for persistence.
-        // let's check if args.owner is 'demo-user'.
-        if (args.owner !== 'demo-user') {
-             throw new Error("Unauthorized");
-        }
+      throw new Error("Unauthorized");
     }
     
-    const ownerId = identity ? identity.tokenIdentifier : (args.owner || 'demo-user');
+    const ownerId = identity.tokenIdentifier;
     const targetTitle = args.title || 'My First Flow';
 
     if (args.id) {
@@ -98,12 +90,9 @@ export const update = mutation({
       throw new Error(`Workflow ${args.id} not found`);
     }
     
-    // Verify ownership if authenticated (skip for demo-user if we want to support that, but safer to lock it down)
-    // If workflow owner is a tokenIdentifier (contains |), and identity matches, allows.
-    if (workflow.owner !== 'demo-user') {
-        if (!identity || identity.tokenIdentifier !== workflow.owner) {
-            throw new Error("Unauthorized to update this workflow");
-        }
+    // Verify ownership if authenticated
+    if (!identity || identity.tokenIdentifier !== workflow.owner) {
+      throw new Error("Unauthorized to update this workflow");
     }
     
     await ctx.db.patch(args.id, {
@@ -146,10 +135,8 @@ export const deleteWorkflow = mutation({
     
     if (!workflow) return; // Already gone
     
-    if (workflow.owner !== 'demo-user') {
-         if (!identity || identity.tokenIdentifier !== workflow.owner) {
-            throw new Error("Unauthorized to delete this workflow");
-        }
+    if (!identity || identity.tokenIdentifier !== workflow.owner) {
+      throw new Error("Unauthorized to delete this workflow");
     }
     
     await ctx.db.delete(args.id);
@@ -165,12 +152,10 @@ export const deleteBatch = mutation({
       const workflow = await ctx.db.get(id);
       if (!workflow) continue;
       
-      if (workflow.owner !== 'demo-user') {
-         if (!identity || identity.tokenIdentifier !== workflow.owner) {
-            // Skip unauthorized, or throw? Skipping is safer for batch ops partial success
-            continue; 
-        }
-      }
+    if (!identity || identity.tokenIdentifier !== workflow.owner) {
+        // Skip unauthorized
+        continue;
+    }
       await ctx.db.delete(id);
     }
   },

@@ -34,6 +34,7 @@ import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import BrushIcon from '@mui/icons-material/Brush';
 import SettingsIcon from '@mui/icons-material/Settings';
 import CreditCardIcon from '@mui/icons-material/CreditCard';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import SettingsPanel from './SettingsPanel';
 import {
   StableDiffusionNode,
@@ -323,7 +324,7 @@ function CanvasContent({
 
   const pollStatus = useCallback(async (taskId: string, runId?: string) => {
     let attempts = 0;
-    const maxAttempts = 30; // 30s timeout for client-side polling
+    const maxAttempts = 300; // 5 minutes timeout for client-side polling (some models are slow)
     
     while (attempts < maxAttempts) {
         await new Promise(r => setTimeout(r, 1000));
@@ -396,47 +397,18 @@ function CanvasContent({
         seed?: number;
       };
       
-      // Prefer the prompt from the model node itself if set, otherwise fallback to connected prompt node
-      // Logic: Model Node Internal Prompt > Connected Prompt Node > Label fallback
-      const promptText = modelData.prompt || promptData.prompt || promptData.label || 'Generate an image';
+      // Gather extra parameters
+      const inputParams: Record<string, any> = {};
+      for (const key in modelData) {
+        if (key !== 'label' && key !== 'prompt' && key !== 'status' && key !== 'error' && key !== 'output' && key !== 'logo') {
+          inputParams[key] = (modelData as any)[key];
+        }
+      }
       const modelLabel = modelData.label || 'Stable Diffusion 3.5';
       
-      // Gather extra parameters
-      const inputParams = {
-        aspect_ratio: modelData.aspect_ratio,
-        guidance_scale: modelData.guidance_scale,
-        output_format: modelData.output_format,
-        safety_tolerance: modelData.safety_tolerance,
-        seed: modelData.seed,
-      };
-
-      const modelMap: Record<string, string> = {
-        'Stable Diffusion 3.5': 'stable-diffusion-3.5',
-        'DALL·E 3': 'dalle-3',
-        'GPT Image 1': 'gpt-image-1',
-        'Imagen 4': 'imagen-4',
-        'Imagen 3': 'imagen-3',
-        'Imagen 3 Fast': 'imagen-3-fast',
-        'Flux Pro 1.1 Ultra': 'flux-pro-1.1-ultra',
-        'Flux Pro 1.1': 'flux-pro-1.1',
-        'Flux Dev Redux': 'flux-dev-redux',
-        'Flux Canny Pro': 'flux-canny-pro',
-        'Flux Depth Pro': 'flux-depth-pro',
-        'Ideogram V3': 'ideogram-v3',
-        'Ideogram V2': 'ideogram-v2',
-        'Minimax Image': 'minimax-image-01',
-        'Recraft V3 SVG': 'recraft-v3-svg',
-        'Image Upscale / Real-ESRGAN': 'esrgan',
-        'Bria': 'bria',
-        'Wan 2.5': 'wan-2.5-t2v',
-        'Wan 2.2': 'wan-2.2-t2v',
-        'Hunyuan Video to Video': 'hunyuan-video',
-        'Hunyuan 3D': 'hunyuan-3d',
-        'Trellis': 'trellis',
-        'Meshy': 'meshy',
-        'Rodin': 'rodin',
-      };
-      const model = modelMap[modelLabel] || modelLabel.toLowerCase().replace(/\s+/g, '-');
+      // Lookup slug from centralized MODELS array
+      const modelDef = [...MODELS, ...TOOLS].find(m => m.name === modelLabel);
+      const model = modelDef?.slug || modelLabel.toLowerCase().replace(/\s+/g, '-');
       
       // Call API
       const res = await fetch('/api/run', {
@@ -528,7 +500,7 @@ function CanvasContent({
     } finally {
       setIsProcessing(false);
     }
-  }, [nodes, workflowId, setNodes, setOutputs, setOutputPanelOpen, pollStatus, user]);
+  }, [nodes, workflowId, setNodes, setOutputs, setOutputPanelOpen, pollStatus, user, edges]);
 
   // Listen to node-run events
   useEffect(() => {
@@ -866,7 +838,7 @@ function CanvasContent({
                     whileTap={{ scale: 0.96 }}
                     title="Open AI assistant"
                   >
-                    🤖
+                    <AutoAwesomeIcon />
                   </motion.button>
                 )}
 
@@ -915,10 +887,18 @@ function CanvasContent({
           scrollToCategory={scrollToCategory}
           onConsumeScrollToCategory={onConsumeScrollToCategory}
           onAddNode={(type: string, label: string, logo?: string) => {
+            // Place node in the center of the view
+            const center = screenToFlowPosition({
+                x: window.innerWidth / 2,
+                y: window.innerHeight / 2
+            });
+            // Slight randomization to avoid perfect stacking
+            const offset = { x: (Math.random() - 0.5) * 40, y: (Math.random() - 0.5) * 40 };
+
             const newNode: Node = {
               id: `node-${Date.now()}`,
               data: { label, logo },
-              position: { x: Math.random() * 500, y: Math.random() * 500 },
+              position: { x: center.x + offset.x, y: center.y + offset.y },
               type,
             };
             setNodes([...nodes, newNode]);

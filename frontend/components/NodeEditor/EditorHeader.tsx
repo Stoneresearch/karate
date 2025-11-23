@@ -170,9 +170,13 @@ export default function EditorHeader({
       <button
         type="button"
         onClick={onRun}
-        disabled={isProcessing}
-        className={`btn-primary btn-compact text-xs md:text-sm ${isProcessing ? 'opacity-70 cursor-not-allowed' : ''}`}
-        title="Run workflow"
+        disabled={isProcessing || edgeCount === 0}
+        className={`btn-compact inline-flex items-center justify-center text-xs md:text-sm ${
+          isProcessing || edgeCount === 0
+            ? 'bg-zinc-200 dark:bg-zinc-800 text-zinc-400 border-transparent cursor-not-allowed'
+            : 'btn-primary'
+        }`}
+        title={edgeCount === 0 ? "Connect nodes to run a flow" : "Run workflow"}
       >
         {isProcessing ? (
           <>

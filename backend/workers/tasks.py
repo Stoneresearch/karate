@@ -175,6 +175,7 @@ async def _process_ai_task(task_id: str, model: str, prompt: str, user_id: str, 
             # Extensive Replicate Slug Mapping
             slug_map = {
               # Images
+              "dalle-3": "openai/dall-e-3", # If using a wrapper on Replicate
               "flux-pro-1.1-ultra": "black-forest-labs/flux-1.1-pro-ultra",
               "flux-pro-1.1": "black-forest-labs/flux-1.1-pro",
               "flux-dev-redux": "black-forest-labs/flux-dev", # Approximate
@@ -185,21 +186,24 @@ async def _process_ai_task(task_id: str, model: str, prompt: str, user_id: str, 
               "minimax-image-01": "minimax/image-01",
               "recraft-v3-svg": "recraft-ai/recraft-v3-svg",
               "esrgan": "nightmareai/real-esrgan",
-              "imagen-4": "google/imagen-3", # Fallback
               "imagen-3": "google/imagen-3",
               "imagen-3-fast": "google/imagen-3-fast",
               "google-upscaler": "google/imagen-3-upscaler", # Approximate
-              "gemini-2.5-flash-image": "google/gemini-flash-vision", # Placeholder
+              "gemini-1.5-flash": "google/gemini-1.5-flash", 
+              "gemini-2.5-flash-image": "google/gemini-2.5-flash-image",
               
               # Video
               "hunyuan-video": "tencent/hunyuan-video",
               "wan-2.1-t2v": "wan-video/wan-2.1-t2v-14b",
-              "wan-2.1-i2v": "wan-video/wan-2.1-i2v-14b",
-              "wan-2.5-t2v": "wan-video/wan-2.1-t2v-14b", # Alias if needed
+              "wan-2.5": "wan-video/wan-2.5",
+              "wan-2.2": "wan-video/wan-2.2",
+              "sora-2": "openai/sora-2",
               "kling-v1": "kling-ai/kling-v1", 
               "luma-ray": "luma/ray",
               "runway-gen-3": "runwayml/runway-gen-3",
               "veo-2": "google/veo-2",
+              "veo-3": "google/veo-3",
+              "veo-3.1": "google/veo-3.1",
               "minimax-video": "minimax/video-01",
               
               # 3D
@@ -210,30 +214,31 @@ async def _process_ai_task(task_id: str, model: str, prompt: str, user_id: str, 
             }
             
             # Allow environment variable overrides for any slug
-            env_key = f"REPLICATE_{model.upper().replace('-', '_')}"
+            env_key = f"REPLICATE_{model.upper().replace('-', '_').replace('/', '_')}"
+            
+            # Try map first, then fallback to model string if it looks like a slug (owner/name)
             slug = os.getenv(env_key, slug_map.get(model))
+            if not slug and "/" in model:
+                slug = model
 
             if slug:
                 if replicate is not None and os.getenv("REPLICATE_API_TOKEN"):
                     def _run_generic(prompt_text: str, params: dict) -> Optional[str]:
                         try:
-                            # Basic inputs
+                            # Start with prompt
                             inputs = {"prompt": prompt_text}
                             
-                            # Pass through other params
-                            # Common names in Replicate models: 
-                            # aspect_ratio, guidance_scale, num_inference_steps, seed, negative_prompt
+                            # Merge all other params, overriding prompt if strictly necessary (though we set it above)
+                            # We exclude 'user_id', 'workflowId' etc if they were passed in params, 
+                            # but params usually comes from **kwargs in calling function.
+                            # Let's assume params contains only model inputs.
+                            inputs.update(params)
                             
-                            if "aspect_ratio" in params: inputs["aspect_ratio"] = params["aspect_ratio"]
-                            if "guidance_scale" in params: inputs["guidance_scale"] = params["guidance_scale"]
-                            if "output_format" in params: inputs["output_format"] = params["output_format"]
-                            if "safety_tolerance" in params: inputs["safety_tolerance"] = params["safety_tolerance"]
-                            if "seed" in params and params["seed"] is not None: inputs["seed"] = params["seed"]
-                            if "negative_prompt" in params: inputs["negative_prompt"] = params["negative_prompt"]
-                            
-                            # Video/Audio specific params might need mapping, but passing extras is usually ignored or handled if key matches
-                            
-                            logger.info(f"Running Replicate model {slug} with inputs: {inputs.keys()}")
+                            # Ensure prompt is set (if params had it, it's fine, if not, we set it)
+                            if "prompt" not in inputs or not inputs["prompt"]:
+                                inputs["prompt"] = prompt_text
+
+                            logger.info(f"Running Replicate model {slug} with inputs keys: {list(inputs.keys())}")
                             output: Any = replicate.run(slug, input=inputs)
                             return _first_url_from(output)
                         except Exception as e:

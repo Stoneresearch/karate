@@ -30,7 +30,14 @@ const BaseNode = ({ children, label, icon, selected, isLoading }: { children: Re
       <div className="node-header">
         <div className="flex items-center gap-2 w-full">
            <div className="text-xl flex items-center justify-center w-6 h-6">
-             {isLoading ? <span className="animate-spin">⏳</span> : (icon.startsWith('http') ? <img src={icon} className="w-full h-full object-contain" alt="" /> : icon)}
+             {isLoading ? (
+               <div className="relative w-5 h-5">
+                 <div className="absolute inset-0 rounded-full border-[2px] border-zinc-200 dark:border-zinc-700 opacity-20"></div>
+                 <div className="absolute inset-0 rounded-full border-[2px] border-transparent border-t-yellow-400 animate-spin"></div>
+               </div>
+             ) : (
+               icon.startsWith('http') ? <img src={icon} className="w-full h-full object-contain" alt="" /> : icon
+             )}
            </div>
            <h3 className="node-title flex-1">{label}</h3>
         </div>
@@ -74,6 +81,19 @@ export const StableDiffusionNode = memo(({ data }: { data: { label?: string; pro
   // Get schema based on the node's label (model name)
   const schema = useMemo(() => getSchemaForModel(data.label || 'Stable Diffusion 3.5'), [data.label]);
 
+  const onFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // If it's a large file (likely for processing), we might want to handle it differently
+    // For now, convert to DataURL
+    const reader = new FileReader();
+    reader.onload = () => {
+        updateData({ [e.target.name]: reader.result as string });
+    };
+    reader.readAsDataURL(file);
+  }, [updateData]);
+
   return (
     <BaseNode label={data.label || 'Generative Model'} icon={data.logo || "✨"} isLoading={isLoading}>
       <div className="space-y-2">
@@ -82,7 +102,7 @@ export const StableDiffusionNode = memo(({ data }: { data: { label?: string; pro
         <textarea 
           value={data.prompt || ''}
           onChange={(e) => updateData({ prompt: e.target.value })}
-          className="node-textarea h-20" 
+          className="node-textarea nodrag h-20" 
           placeholder="Describe your creation..." 
           disabled={isLoading} 
         />
@@ -93,9 +113,36 @@ export const StableDiffusionNode = memo(({ data }: { data: { label?: string; pro
                  <div key={param.name}>
                      <label className="text-zinc-600 dark:text-zinc-400 block mb-1 capitalize font-medium">{param.label || param.name}</label>
                      
-                     {param.type === 'select' && (
+                     {/* STRING INPUT - Check if it expects a URI/Image */}
+                     {param.type === 'string' && (param.description?.toLowerCase().includes('uri') || param.description?.toLowerCase().includes('image') || param.description?.toLowerCase().includes('file')) ? (
+                        <div className="space-y-1">
+                            {data[param.name] && (
+                                <div className="relative w-full h-16 bg-zinc-800 rounded overflow-hidden">
+                                    <img src={data[param.name]} className="w-full h-full object-contain" alt="Uploaded" />
+                                    <button 
+                                        onClick={() => updateData({ [param.name]: undefined })}
+                                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-0.5 w-4 h-4 flex items-center justify-center"
+                                    >
+                                        ×
+                                    </button>
+                                </div>
+                            )}
+                            <label className="block w-full cursor-pointer">
+                                <input 
+                                    type="file" 
+                                    name={param.name}
+                                    onChange={onFileChange} 
+                                    className="hidden" 
+                                    accept="image/*" // Basic default, could be dynamic
+                                />
+                                <div className="w-full py-1 text-center border border-dashed border-zinc-500 rounded text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
+                                    {data[param.name] ? 'Change File' : 'Upload File'}
+                                </div>
+                            </label>
+                        </div>
+                     ) : param.type === 'select' ? (
                          <select 
-                            className="node-input"
+                            className="node-input nodrag"
                             value={data[param.name] !== undefined ? data[param.name] : param.default}
                             onChange={(e) => updateData({ [param.name]: e.target.value })}
                          >
@@ -103,12 +150,10 @@ export const StableDiffusionNode = memo(({ data }: { data: { label?: string; pro
                                  <option key={opt} value={opt}>{opt}</option>
                              ))}
                          </select>
-                     )}
-                     
-                     {param.type === 'number' && (
+                     ) : param.type === 'number' ? (
                          <input 
                             type="number"
-                            className="node-input"
+                            className="node-input nodrag"
                             min={param.min}
                             max={param.max}
                             step={param.step}
@@ -116,9 +161,7 @@ export const StableDiffusionNode = memo(({ data }: { data: { label?: string; pro
                             placeholder={param.default?.toString()}
                             onChange={(e) => updateData({ [param.name]: e.target.value === '' ? undefined : Number(e.target.value) })}
                          />
-                     )}
-                     
-                     {param.type === 'boolean' && (
+                     ) : param.type === 'boolean' ? (
                         <div className="flex items-center gap-2">
                             <input 
                                 type="checkbox"
@@ -127,11 +170,9 @@ export const StableDiffusionNode = memo(({ data }: { data: { label?: string; pro
                             />
                             <span className="text-zinc-500">{param.description}</span>
                         </div>
-                     )}
-
-                     {param.type === 'string' && (
+                     ) : (
                          <textarea
-                            className="node-textarea h-10"
+                            className="node-textarea nodrag h-10"
                             value={data[param.name] !== undefined ? data[param.name] : (param.default ?? '')}
                             placeholder={param.description || ''}
                             onChange={(e) => updateData({ [param.name]: e.target.value })}
@@ -168,7 +209,7 @@ export const StableDiffusionNode = memo(({ data }: { data: { label?: string; pro
             ⚙️ Settings
           </button>
           <button className="node-btn flex-1" disabled={isLoading} onClick={onRunNode}>
-            {isLoading ? 'Generating...' : '🎨 Generate'}
+            {isLoading ? 'Generating...' : 'Generate'}
           </button>
         </div>
       </div>
@@ -219,7 +260,7 @@ export const TextNode = memo(({ data }: { data: { label?: string; text?: string 
         <textarea 
             defaultValue={data.text || ''} 
             onChange={(e) => updateData(e.target.value)}
-            className="node-input h-24" 
+            className="node-input nodrag h-24" 
             placeholder="Enter text..." 
         />
       </div>
@@ -241,7 +282,7 @@ export const UpscaleNode = memo(({ data }: { data: { label?: string; scale?: str
     <BaseNode label={data.label || 'Upscale'} icon="🔍">
       <div className="space-y-2">
         <div className="text-xs text-zinc-300 font-medium">Scale Factor</div>
-        <select className="node-input">
+        <select className="node-input nodrag">
           <option>2x (Double)</option>
           <option>4x (Quad)</option>
           <option>8x (Ultra)</option>
@@ -268,7 +309,7 @@ export const InpaintNode = memo(({ data }: { data: { label?: string; prompt?: st
     <BaseNode label={data.label || 'Inpaint'} icon="🎨">
       <div className="space-y-2">
         <div className="text-xs text-zinc-300 font-medium">Mask & Prompt</div>
-        <textarea defaultValue={data.prompt || 'What to inpaint...'} className="node-textarea h-12" placeholder="Describe what to paint..." />
+        <textarea defaultValue={data.prompt || 'What to inpaint...'} className="node-textarea nodrag h-12" placeholder="Describe what to paint..." />
         <button className="node-btn w-full" onClick={onRunNode}>
           🎨 Inpaint
         </button>
@@ -302,7 +343,7 @@ export const PromptNode = memo(({ data }: { data: PromptData }) => {
         <textarea
           value={data.prompt || ''}
           onChange={(e) => updateData({ prompt: e.target.value })}
-          className="w-full text-xs p-2 bg-black/50 border border-yellow-500/30 rounded text-zinc-200 resize-none h-16 focus:outline-none focus:border-yellow-400"
+          className="w-full text-xs p-2 bg-black/50 border border-yellow-500/30 rounded text-zinc-200 resize-none h-16 focus:outline-none focus:border-yellow-400 nodrag"
           placeholder="Describe your image..."
         />
 
@@ -310,22 +351,22 @@ export const PromptNode = memo(({ data }: { data: PromptData }) => {
         <textarea
           value={data.negativePrompt || ''}
           onChange={(e) => updateData({ negativePrompt: e.target.value })}
-          className="w-full text-xs p-2 bg-black/50 border border-yellow-500/30 rounded text-zinc-200 resize-none h-12 focus:outline-none focus:border-yellow-400"
+          className="w-full text-xs p-2 bg-black/50 border border-yellow-500/30 rounded text-zinc-200 resize-none h-12 focus:outline-none focus:border-yellow-400 nodrag"
           placeholder="What to avoid..."
         />
 
         <div className="grid grid-cols-3 gap-2">
           <div>
             <div className="text-[10px] text-zinc-400 mb-1">Steps</div>
-            <input type="number" value={steps} min={1} max={100} onChange={(e) => updateData({ steps: Number(e.target.value) })} className="node-input" />
+            <input type="number" value={steps} min={1} max={100} onChange={(e) => updateData({ steps: Number(e.target.value) })} className="node-input nodrag" />
           </div>
           <div>
             <div className="text-[10px] text-zinc-400 mb-1">Guidance</div>
-            <input type="number" value={guidance} step={0.5} min={0} max={50} onChange={(e) => updateData({ guidance: Number(e.target.value) })} className="node-input" />
+            <input type="number" value={guidance} step={0.5} min={0} max={50} onChange={(e) => updateData({ guidance: Number(e.target.value) })} className="node-input nodrag" />
           </div>
           <div>
             <div className="text-[10px] text-zinc-400 mb-1">Seed</div>
-            <input type="text" value={seed} onChange={(e) => updateData({ seed: e.target.value })} className="node-input" placeholder="random" />
+            <input type="text" value={seed} onChange={(e) => updateData({ seed: e.target.value })} className="node-input nodrag" placeholder="random" />
           </div>
         </div>
       </div>

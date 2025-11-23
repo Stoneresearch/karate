@@ -580,6 +580,10 @@ body, #__next { overflow-x: hidden; }
   color: var(--color-primary-light);
 }
 
+.react-flow__attribution {
+  display: none !important;
+}
+
 @media (max-width: 768px) {
   .hide-mobile {
     display: none;
