@@ -216,8 +216,8 @@ export default function Sidebar({ isOpen, models, tools, onAddNode, onActiveCate
             {/* Header */}
             <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 flex flex-col gap-3">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold text-white">AI Models & Tools</h2>
-                <a href="/dashboard" className="p-2 rounded hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors" title="Back to Home">
+                <h2 className="text-lg font-bold text-zinc-900 dark:text-white">AI Models & Tools</h2>
+                <a href="/dashboard" className="p-2 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors" title="Back to Home">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
                     <polyline points="9 22 9 12 15 12 15 22"></polyline>

@@ -35,15 +35,21 @@ fi
 
 # Check Environment Variables
 if [ -f .env ]; then
+  echo "Loading .env file..."
   export $(grep -v '^#' .env | xargs)
+else
+  echo "⚠️  No .env file found!"
 fi
 
 export INTERNAL_API_KEY=${INTERNAL_API_KEY:-"dev-secret"}
-# Add other defaults if needed
 
 echo -e "${GREEN}✅ Environment ready. Starting server...${NC}"
 echo -e "${GREEN}🔑 INTERNAL_API_KEY: $INTERNAL_API_KEY${NC}"
+if [ -z "$REPLICATE_API_TOKEN" ]; then
+    echo -e "${YELLOW}⚠️  REPLICATE_API_TOKEN is MISSING${NC}"
+else
+    echo -e "${GREEN}✅ REPLICATE_API_TOKEN is SET${NC}"
+fi
 
 # Start Server
 python3 -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
-

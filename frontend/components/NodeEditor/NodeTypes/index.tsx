@@ -1,15 +1,14 @@
-"use client";
-import { memo, useCallback, useState } from 'react';
+import React, { memo, ReactNode, useState, useCallback, useMemo } from 'react';
 import { Handle, Position, useNodeId, useReactFlow } from '@xyflow/react';
-import type { PromptData, ImageUploadData, ImageNodeData } from '../types';
 import Image from 'next/image';
-import { CircularProgress } from '@mui/material'; // Ensure you have this or use a custom spinner
+import { getSchemaForModel, ModelSchema } from '../../../lib/modelSchemas';
+import type { PromptData, ImageUploadData, ImageNodeData } from '../types';
 
-// Base Node Component
-type BaseNodeProps = { label: string; icon: string; children?: React.ReactNode; isLoading?: boolean };
-const BaseNode = ({ label, icon, children, isLoading }: BaseNodeProps) => {
+// Base Node Component with restored styling
+const BaseNode = ({ children, label, icon, selected, isLoading }: { children: ReactNode; label: string; icon: string; selected?: boolean; isLoading?: boolean }) => {
   const nodeId = useNodeId();
   const { setNodes } = useReactFlow();
+  
   const onCtx = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -17,59 +16,45 @@ const BaseNode = ({ label, icon, children, isLoading }: BaseNodeProps) => {
       window.dispatchEvent(new CustomEvent('karate-node-contextmenu', { detail: { x: e.clientX, y: e.clientY, nodeId } }));
     }
   };
-  const onMouseDownSelect = () => {
-    if (!nodeId) return;
-    setNodes((nds) => nds.map((n) => (n.id === nodeId ? { ...n, selected: true } : { ...n, selected: false })));
-  };
-
-  const isImageIcon = icon.startsWith('http') || icon.startsWith('/');
 
   return (
-    <div
-      className={`node-surface min-w-[260px] relative p-4 ${isLoading ? 'animate-pulse' : ''}`}
-      style={{ outline: 'none' }}
-      onContextMenu={onCtx}
-      onMouseDown={onMouseDownSelect}
+    <div 
+        className={`node-surface min-w-[260px] relative p-4 ${isLoading ? 'animate-pulse' : ''} ${selected ? 'ring-1 ring-yellow-400/50 shadow-[0_0_30px_-5px_rgba(250,204,21,0.1)]' : ''}`}
+        style={{ outline: 'none' }}
+        onContextMenu={onCtx}
     >
-      {/* Input Handle - Top */}
-      <Handle 
-        type="target" 
-        position={Position.Top}
-        isConnectable={true}
-        id="target"
-      />
+       {/* Input Handle - Top */}
+      <Handle type="target" position={Position.Top} id="target" className="node-handle !bg-zinc-600" />
 
-      {/* Node Header */}
+       {/* Header */}
       <div className="node-header">
         <div className="flex items-center gap-2 w-full">
-          <div className="text-xl flex items-center justify-center w-6 h-6">
-            {isImageIcon ? (
-              <img src={icon} alt="" className="w-full h-full object-contain" />
-            ) : (
-              icon
-            )}
-          </div>
-          <h3 className="node-title flex-1">{label}</h3>
-          {isLoading && <CircularProgress size={16} className="text-yellow-400" />}
+           <div className="text-xl flex items-center justify-center w-6 h-6">
+             {isLoading ? <span className="animate-spin">⏳</span> : (icon.startsWith('http') ? <img src={icon} className="w-full h-full object-contain" alt="" /> : icon)}
+           </div>
+           <h3 className="node-title flex-1">{label}</h3>
         </div>
+        {/* Status Indicator */}
+        {isLoading && (
+            <div className="absolute top-2 right-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-yellow-400/10 border border-yellow-400/20">
+                <div className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
+            </div>
+        )}
       </div>
 
-      {/* Node Body */}
-      <div className="node-body">{children}</div>
+      {/* Body */}
+      <div className="node-body">
+        {children}
+      </div>
 
       {/* Output Handle - Bottom */}
-      <Handle 
-        type="source" 
-        position={Position.Bottom}
-        isConnectable={true}
-        id="source"
-      />
+      <Handle type="source" position={Position.Bottom} id="source" className="node-handle !bg-yellow-400" />
     </div>
   );
 };
 
-// Stable Diffusion Node
-export const StableDiffusionNode = memo(({ data }: { data: { label?: string; prompt?: string; status?: string; error?: string; output?: string; aspect_ratio?: string; guidance_scale?: number; output_format?: string; safety_tolerance?: number; seed?: number; logo?: string } }) => {
+// Generic Generative AI Node with Dynamic Schema Support
+export const StableDiffusionNode = memo(({ data }: { data: { label?: string; prompt?: string; status?: string; error?: string; output?: string; logo?: string; [key: string]: any } }) => {
   const nodeId = useNodeId();
   const { setNodes } = useReactFlow();
   const updateData = useCallback((patch: Record<string, unknown>) => {
@@ -85,87 +70,75 @@ export const StableDiffusionNode = memo(({ data }: { data: { label?: string; pro
 
   const isLoading = data.status === 'processing';
   const [settingsOpen, setSettingsOpen] = useState(false);
+  
+  // Get schema based on the node's label (model name)
+  const schema = useMemo(() => getSchemaForModel(data.label || 'Stable Diffusion 3.5'), [data.label]);
 
   return (
-    <BaseNode label={data.label || 'Stable Diffusion 3.5'} icon={data.logo || "✨"} isLoading={isLoading}>
+    <BaseNode label={data.label || 'Generative Model'} icon={data.logo || "✨"} isLoading={isLoading}>
       <div className="space-y-2">
+        {/* Always show Prompt as it's standard */}
         <div className="text-xs text-zinc-300 font-medium">Prompt</div>
         <textarea 
           value={data.prompt || ''}
           onChange={(e) => updateData({ prompt: e.target.value })}
-          className="node-textarea h-16" 
-          placeholder="Describe your image..." 
+          className="node-textarea h-20" 
+          placeholder="Describe your creation..." 
           disabled={isLoading} 
         />
         
         {settingsOpen && (
-          <div className="p-2 bg-zinc-900/50 rounded border border-zinc-800 space-y-2 text-[10px]">
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-zinc-400 block mb-1">Aspect Ratio</label>
-                <select 
-                  className="node-input" 
-                  value={data.aspect_ratio || '1:1'} 
-                  onChange={(e) => updateData({ aspect_ratio: e.target.value })}
-                >
-                  <option value="1:1">1:1 Square</option>
-                  <option value="16:9">16:9 Landscape</option>
-                  <option value="21:9">21:9 Ultrawide</option>
-                  <option value="3:2">3:2 Classic</option>
-                  <option value="2:3">2:3 Portrait</option>
-                  <option value="4:5">4:5 Social</option>
-                  <option value="5:4">5:4 Social</option>
-                  <option value="9:16">9:16 Vertical</option>
-                  <option value="9:21">9:21 Tall</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-zinc-400 block mb-1">Format</label>
-                <select 
-                  className="node-input"
-                  value={data.output_format || 'webp'}
-                  onChange={(e) => updateData({ output_format: e.target.value })}
-                >
-                  <option value="webp">WEBP</option>
-                  <option value="png">PNG</option>
-                  <option value="jpg">JPG</option>
-                </select>
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-2">
-               <div>
-                <label className="text-zinc-400 block mb-1">Guidance</label>
-                <input 
-                  type="number" 
-                  step={0.1} 
-                  className="node-input" 
-                  value={data.guidance_scale || 3.5}
-                  onChange={(e) => updateData({ guidance_scale: Number(e.target.value) })}
-                />
-               </div>
-               <div>
-                <label className="text-zinc-400 block mb-1">Safety (1-5)</label>
-                <input 
-                  type="number" 
-                  min={1} max={5} 
-                  className="node-input" 
-                  value={data.safety_tolerance || 2}
-                  onChange={(e) => updateData({ safety_tolerance: Number(e.target.value) })}
-                />
-               </div>
-            </div>
+          <div className="p-2 rounded border space-y-2 text-[10px] bg-zinc-50 dark:bg-zinc-900/50 border-zinc-200 dark:border-zinc-800">
+             {schema.parameters.filter(p => p.name !== 'prompt').map((param) => (
+                 <div key={param.name}>
+                     <label className="text-zinc-600 dark:text-zinc-400 block mb-1 capitalize font-medium">{param.label || param.name}</label>
+                     
+                     {param.type === 'select' && (
+                         <select 
+                            className="node-input"
+                            value={data[param.name] !== undefined ? data[param.name] : param.default}
+                            onChange={(e) => updateData({ [param.name]: e.target.value })}
+                         >
+                             {param.options?.map(opt => (
+                                 <option key={opt} value={opt}>{opt}</option>
+                             ))}
+                         </select>
+                     )}
+                     
+                     {param.type === 'number' && (
+                         <input 
+                            type="number"
+                            className="node-input"
+                            min={param.min}
+                            max={param.max}
+                            step={param.step}
+                            value={data[param.name] !== undefined ? data[param.name] : (param.default ?? '')}
+                            placeholder={param.default?.toString()}
+                            onChange={(e) => updateData({ [param.name]: e.target.value === '' ? undefined : Number(e.target.value) })}
+                         />
+                     )}
+                     
+                     {param.type === 'boolean' && (
+                        <div className="flex items-center gap-2">
+                            <input 
+                                type="checkbox"
+                                checked={!!(data[param.name] !== undefined ? data[param.name] : param.default)}
+                                onChange={(e) => updateData({ [param.name]: e.target.checked })}
+                            />
+                            <span className="text-zinc-500">{param.description}</span>
+                        </div>
+                     )}
 
-            <div>
-                <label className="text-zinc-400 block mb-1">Seed (Optional)</label>
-                <input 
-                  type="number" 
-                  className="node-input" 
-                  placeholder="Random"
-                  value={data.seed || ''}
-                  onChange={(e) => updateData({ seed: e.target.value ? Number(e.target.value) : undefined })}
-                />
-            </div>
+                     {param.type === 'string' && (
+                         <textarea
+                            className="node-textarea h-10"
+                            value={data[param.name] !== undefined ? data[param.name] : (param.default ?? '')}
+                            placeholder={param.description || ''}
+                            onChange={(e) => updateData({ [param.name]: e.target.value })}
+                         />
+                     )}
+                 </div>
+             ))}
           </div>
         )}
 
@@ -177,7 +150,11 @@ export const StableDiffusionNode = memo(({ data }: { data: { label?: string; pro
 
         {data.output && (
              <div className="relative w-full h-32 mt-2 rounded overflow-hidden border border-zinc-700 group">
-                <Image src={data.output} alt="Generated" fill className="object-cover" unoptimized />
+                {data.output.endsWith('.mp4') || data.output.includes('video') ? (
+                    <video src={data.output} controls className="w-full h-full object-cover" />
+                ) : (
+                    <Image src={data.output} alt="Generated" fill className="object-cover" unoptimized />
+                )}
                 <a href={data.output} target="_blank" rel="noopener noreferrer" className="absolute bottom-1 right-1 bg-black/60 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">Open</a>
              </div>
         )}
@@ -230,10 +207,21 @@ ImageNode.displayName = 'ImageNode';
 
 // Text Node
 export const TextNode = memo(({ data }: { data: { label?: string; text?: string } }) => {
+  const nodeId = useNodeId();
+  const { setNodes } = useReactFlow();
+  const updateData = (text: string) => {
+      if (!nodeId) return;
+      setNodes((nds) => nds.map((n) => n.id === nodeId ? { ...n, data: { ...n.data, text } } : n));
+  };
   return (
     <BaseNode label={data.label || 'Text Input'} icon="📝">
       <div className="space-y-2">
-        <input type="text" defaultValue={data.text || 'Enter text...'} className="node-input" placeholder="Enter text..." />
+        <textarea 
+            defaultValue={data.text || ''} 
+            onChange={(e) => updateData(e.target.value)}
+            className="node-input h-24" 
+            placeholder="Enter text..." 
+        />
       </div>
     </BaseNode>
   );

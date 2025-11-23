@@ -170,6 +170,7 @@ body, #__next { overflow-x: hidden; }
   position: absolute;
   transition: all var(--transition-fast);
   box-shadow: 0 0 0 0 rgba(252, 211, 77, 0.3);
+  z-index: 50;
 }
 
 .react-flow__handle-target {
@@ -391,17 +392,57 @@ body, #__next { overflow-x: hidden; }
 .dark .card-glass { @apply bg-gradient-to-br from-zinc-900/40 to-zinc-800/40 border-zinc-800; }
 .dark .btn-secondary { @apply text-white border-zinc-700 hover:bg-zinc-800; }
 
-/* ===== NODE SURFACE (Editor nodes) ===== */
-.node-surface { @apply bg-zinc-900/80 border border-zinc-700 rounded-xl text-white; box-shadow: 0 6px 24px rgba(0,0,0,.4); }
-.dark .node-surface { @apply bg-zinc-900/80 border-zinc-700; }
-.node-surface.selected { box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.6), 0 10px 28px rgba(250, 204, 21, 0.08); border-color: rgba(250,204,21,.6); }
+/* ===== NODE SURFACE (Editor nodes) - LIGHT & DARK MODE FIX ===== */
+.node-surface { 
+  @apply bg-white/90 border border-zinc-200 rounded-xl text-zinc-900 shadow-xl; 
+}
+.dark .node-surface { 
+  @apply bg-zinc-900/80 border-zinc-700 text-white shadow-[0_6px_24px_rgba(0,0,0,.4)]; 
+}
+
+.node-surface.selected { 
+  @apply ring-2 ring-yellow-400/60;
+}
+.dark .node-surface.selected {
+  box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.6), 0 10px 28px rgba(250, 204, 21, 0.08); border-color: rgba(250,204,21,.6);
+}
+
 .node-header { @apply flex items-center justify-between mb-3; }
-.node-title { @apply text-sm font-semibold; }
+.node-title { @apply text-sm font-semibold text-zinc-800 dark:text-zinc-100; }
 .node-body { @apply space-y-2; }
-.node-input { @apply w-full text-xs p-2 rounded border border-zinc-700 bg-black/40 text-zinc-200 focus:outline-none focus:border-yellow-400; }
-.node-textarea { @apply w-full text-xs p-2 rounded border border-zinc-700 bg-black/40 text-zinc-200 resize-none focus:outline-none focus:border-yellow-400; }
-.node-btn { @apply py-1.5 px-2 text-xs rounded border border-zinc-700 bg-zinc-800/60 text-zinc-200 hover:bg-zinc-700 transition; }
-.node-btn-primary { @apply border-yellow-400 bg-yellow-400/20 text-yellow-300 hover:bg-yellow-400/30; }
+
+/* Inputs - Light/Dark Mode */
+.node-input { 
+  @apply w-full text-xs p-2 rounded border outline-none transition-all;
+  @apply bg-zinc-50 border-zinc-200 text-zinc-900 focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400/20;
+}
+.dark .node-input {
+  @apply bg-black/40 border-zinc-700 text-zinc-200 focus:border-yellow-400;
+}
+
+.node-textarea { 
+  @apply w-full text-xs p-2 rounded border resize-none outline-none transition-all;
+  @apply bg-zinc-50 border-zinc-200 text-zinc-900 focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400/20;
+}
+.dark .node-textarea {
+  @apply bg-black/40 border-zinc-700 text-zinc-200 focus:border-yellow-400;
+}
+
+.node-btn { 
+  @apply py-1.5 px-2 text-xs rounded border transition-all font-medium;
+  @apply bg-zinc-100 border-zinc-200 text-zinc-700 hover:bg-zinc-200 hover:text-zinc-900;
+}
+.dark .node-btn {
+  @apply bg-zinc-800/60 border-zinc-700 text-zinc-200 hover:bg-zinc-700 hover:text-white;
+}
+
+.node-btn-primary { 
+  @apply border-yellow-400 bg-yellow-400/20 text-yellow-600 hover:bg-yellow-400/30; 
+}
+.dark .node-btn-primary {
+  @apply border-yellow-400 bg-yellow-400/20 text-yellow-300 hover:bg-yellow-400/30;
+}
+
 .node-toolbar { @apply flex gap-1; }
 
 /* ===== CONTEXT MENU / COMMAND PALETTE ===== */
@@ -554,4 +595,3 @@ body, #__next { overflow-x: hidden; }
     display: none;
   }
 }
-

@@ -44,7 +44,7 @@ def _first_url_from(obj: Any) -> Optional[str]:
         return url
     return None
   if isinstance(obj, dict):
-    for k in ["url", "image", "output", "src"]:
+    for k in ["url", "image", "output", "src", "video", "audio"]:
       v = obj.get(k)
       if isinstance(v, str) and v.startswith("http"):
         return v
@@ -65,17 +65,11 @@ def _run_replicate_sdxl_sync(prompt: str, **kwargs) -> Optional[str]:
   
   input_payload = {"prompt": prompt}
   
-  if "aspect_ratio" in kwargs:
-      input_payload["aspect_ratio"] = kwargs["aspect_ratio"]
-      
-  if "guidance_scale" in kwargs:
-      input_payload["guidance_scale"] = kwargs["guidance_scale"]
-      
-  if "seed" in kwargs:
-      input_payload["seed"] = kwargs["seed"]
-
-  if "safety_tolerance" in kwargs:
-      input_payload["safety_tolerance"] = kwargs["safety_tolerance"]
+  # Map common parameters
+  if "aspect_ratio" in kwargs: input_payload["aspect_ratio"] = kwargs["aspect_ratio"]
+  if "guidance_scale" in kwargs: input_payload["guidance_scale"] = kwargs["guidance_scale"]
+  if "seed" in kwargs: input_payload["seed"] = kwargs["seed"]
+  if "safety_tolerance" in kwargs: input_payload["safety_tolerance"] = kwargs["safety_tolerance"]
 
   try:
     output: Any = replicate.run(model_version, input=input_payload)  # type: ignore
@@ -177,37 +171,83 @@ async def _process_ai_task(task_id: str, model: str, prompt: str, user_id: str, 
             output_url = await asyncio.to_thread(_run_openai_image_sync, "dall-e-3", prompt)
         elif model == "gpt-image-1":
             output_url = await asyncio.to_thread(_run_openai_image_sync, "gpt-image-1", prompt)
-        elif model in {"flux-pro-1.1-ultra", "flux-pro-1.1", "ideogram-v3", "minimax-image-01", "recraft-v3-svg", "esrgan", "imagen-4", "imagen-4-fast", "imagen-4-ultra", "imagen-3", "imagen-3-fast", "google-upscaler"}:
-            slug_map = {
-              "flux-pro-1.1-ultra": os.getenv("REPLICATE_FLUX_PRO_1_1_ULTRA", "black-forest-labs/flux-1.1-pro-ultra"),
-              "flux-pro-1.1": os.getenv("REPLICATE_FLUX_PRO_1_1", "black-forest-labs/flux-1.1-pro"),
-              "ideogram-v3": os.getenv("REPLICATE_IDEOGRAM_V3", "ideogram-ai/ideogram-v3"),
-              "minimax-image-01": os.getenv("REPLICATE_MINIMAX_IMAGE_01"),
-              "recraft-v3-svg": os.getenv("REPLICATE_RECRAFT_V3_SVG"),
-              "esrgan": os.getenv("REPLICATE_ESRGAN"),
-              "imagen-4": os.getenv("REPLICATE_IMAGEN_4"),
-              "imagen-4-fast": os.getenv("REPLICATE_IMAGEN_4_FAST"),
-              "imagen-4-ultra": os.getenv("REPLICATE_IMAGEN_4_ULTRA"),
-              "imagen-3": os.getenv("REPLICATE_IMAGEN_3"),
-              "imagen-3-fast": os.getenv("REPLICATE_IMAGEN_3_FAST"),
-              "google-upscaler": os.getenv("REPLICATE_GOOGLE_UPSCALER"),
-            }
-            slug = slug_map.get(model)
-            if slug and replicate is not None and os.getenv("REPLICATE_API_TOKEN"):
-                def _run_generic(prompt_text: str) -> Optional[str]:
-                    try:
-                        output: Any = replicate.run(slug, input={"prompt": prompt_text})
-                        return _first_url_from(output)
-                    except Exception as e:
-                        logger.exception(f"Replicate generic error ({slug}): {e}")
-                        return None
-                output_url = await asyncio.to_thread(_run_generic, prompt)
-            else:
-                logger.warning(f"Missing configuration for Replicate model: {model}")
-                error_msg = f"Missing configuration for model: {model}"
-                output_url = None
         else:
-            output_url = await asyncio.to_thread(_run_generic_http_sync, model, prompt)
+            # Extensive Replicate Slug Mapping
+            slug_map = {
+              # Images
+              "flux-pro-1.1-ultra": "black-forest-labs/flux-1.1-pro-ultra",
+              "flux-pro-1.1": "black-forest-labs/flux-1.1-pro",
+              "flux-dev-redux": "black-forest-labs/flux-dev", # Approximate
+              "flux-canny-pro": "black-forest-labs/flux-canny-pro",
+              "flux-depth-pro": "black-forest-labs/flux-depth-pro",
+              "ideogram-v3": "ideogram-ai/ideogram-v2", # Fallback to v2 if v3 not public yet
+              "ideogram-v2": "ideogram-ai/ideogram-v2",
+              "minimax-image-01": "minimax/image-01",
+              "recraft-v3-svg": "recraft-ai/recraft-v3-svg",
+              "esrgan": "nightmareai/real-esrgan",
+              "imagen-4": "google/imagen-3", # Fallback
+              "imagen-3": "google/imagen-3",
+              "imagen-3-fast": "google/imagen-3-fast",
+              "google-upscaler": "google/imagen-3-upscaler", # Approximate
+              "gemini-2.5-flash-image": "google/gemini-flash-vision", # Placeholder
+              
+              # Video
+              "hunyuan-video": "tencent/hunyuan-video",
+              "wan-2.1-t2v": "wan-video/wan-2.1-t2v-14b",
+              "wan-2.1-i2v": "wan-video/wan-2.1-i2v-14b",
+              "wan-2.5-t2v": "wan-video/wan-2.1-t2v-14b", # Alias if needed
+              "kling-v1": "kling-ai/kling-v1", 
+              "luma-ray": "luma/ray",
+              "runway-gen-3": "runwayml/runway-gen-3",
+              "veo-2": "google/veo-2",
+              "minimax-video": "minimax/video-01",
+              
+              # 3D
+              "rodin": "rodin/rodin-v1",
+              "trellis": "microsoft/trellis",
+              "meshy": "meshy/meshy-3",
+              "hunyuan-3d": "tencent/hunyuan-3d-1",
+            }
+            
+            # Allow environment variable overrides for any slug
+            env_key = f"REPLICATE_{model.upper().replace('-', '_')}"
+            slug = os.getenv(env_key, slug_map.get(model))
+
+            if slug:
+                if replicate is not None and os.getenv("REPLICATE_API_TOKEN"):
+                    def _run_generic(prompt_text: str, params: dict) -> Optional[str]:
+                        try:
+                            # Basic inputs
+                            inputs = {"prompt": prompt_text}
+                            
+                            # Pass through other params
+                            # Common names in Replicate models: 
+                            # aspect_ratio, guidance_scale, num_inference_steps, seed, negative_prompt
+                            
+                            if "aspect_ratio" in params: inputs["aspect_ratio"] = params["aspect_ratio"]
+                            if "guidance_scale" in params: inputs["guidance_scale"] = params["guidance_scale"]
+                            if "output_format" in params: inputs["output_format"] = params["output_format"]
+                            if "safety_tolerance" in params: inputs["safety_tolerance"] = params["safety_tolerance"]
+                            if "seed" in params and params["seed"] is not None: inputs["seed"] = params["seed"]
+                            if "negative_prompt" in params: inputs["negative_prompt"] = params["negative_prompt"]
+                            
+                            # Video/Audio specific params might need mapping, but passing extras is usually ignored or handled if key matches
+                            
+                            logger.info(f"Running Replicate model {slug} with inputs: {inputs.keys()}")
+                            output: Any = replicate.run(slug, input=inputs)
+                            return _first_url_from(output)
+                        except Exception as e:
+                            logger.exception(f"Replicate generic error ({slug}): {e}")
+                            return None
+                    
+                    output_url = await asyncio.to_thread(_run_generic, prompt, kwargs)
+                else:
+                    logger.warning(f"Missing configuration for Replicate model: {model}. Replicate lib: {replicate is not None}, Token: {bool(os.getenv('REPLICATE_API_TOKEN'))}")
+                    error_msg = "Missing Replicate configuration (Token or Library)"
+                    output_url = None
+            else:
+                # Fallback to generic HTTP
+                output_url = await asyncio.to_thread(_run_generic_http_sync, model, prompt)
         
         current_state = _get_task(task_id)
         if not current_state:

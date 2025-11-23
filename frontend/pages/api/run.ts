@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { getAuth } from '@clerk/nextjs/server';
 import { ConvexHttpClient } from 'convex/browser';
 import { api } from '../../lib/convex/api';
-import type { Id } from '../../lib/convex/dataModel';
+import type { Id } from '../../../convex/_generated/dataModel';
 
 type RunRequestBody = { 
   model: string; 
@@ -60,8 +60,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     
     if (!internalKey) {
         console.error('INTERNAL_API_KEY is not set in Next.js environment');
-        return res.status(500).json({ error: 'Server configuration error' });
+        // Attempt to use a default for local dev if environment is missing it
+        if (process.env.NODE_ENV === 'development') {
+            console.warn('Falling back to default INTERNAL_API_KEY: dev-secret');
+        } else {
+            return res.status(500).json({ error: 'Server configuration error' });
+        }
     }
+
+    const effectiveKey = internalKey || 'dev-secret';
 
     // 1. Determine Cost
     let cost = FALLBACK_COSTS[model] || 2;
@@ -111,7 +118,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'x-api-key': internalKey,
+            'x-api-key': effectiveKey,
             'x-user-id': userId,
         } as Record<string, string>,
         body: JSON.stringify({ 

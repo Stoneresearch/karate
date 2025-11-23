@@ -375,8 +375,16 @@ function CanvasContent({
     setNodes((nds: Node[]) => nds.map((n: Node) => n.id === targetModelNode!.id ? { ...n, data: { ...n.data, status: 'processing', error: undefined, output: undefined } } : n));
     
     try {
-      // Merge prompt data from potentially multiple prompt nodes connected (simplification: just take first prompt node found)
-      const promptNode = promptNodes[0]; 
+      // Logic to find connected prompt node if specific one exists
+      let specificPromptNode = null;
+      if (targetNodeId) {
+          const incomingEdges = edges.filter(e => e.target === targetNodeId);
+          const incomingNodeIds = incomingEdges.map(e => e.source);
+          specificPromptNode = nodes.find(n => incomingNodeIds.includes(n.id) && n.type === 'prompt');
+      }
+
+      // Fallback to first available prompt node if no direct connection found
+      const promptNode = specificPromptNode || promptNodes[0]; 
       const promptData = (promptNode?.data ?? {}) as { prompt?: string; label?: string };
       const modelData = (targetModelNode?.data ?? {}) as { 
         label?: string; 
@@ -388,7 +396,8 @@ function CanvasContent({
         seed?: number;
       };
       
-      // Prefer the prompt from the model node itself if set, otherwise fallback to prompt node
+      // Prefer the prompt from the model node itself if set, otherwise fallback to connected prompt node
+      // Logic: Model Node Internal Prompt > Connected Prompt Node > Label fallback
       const promptText = modelData.prompt || promptData.prompt || promptData.label || 'Generate an image';
       const modelLabel = modelData.label || 'Stable Diffusion 3.5';
       
@@ -415,54 +424,19 @@ function CanvasContent({
         'Flux Depth Pro': 'flux-depth-pro',
         'Ideogram V3': 'ideogram-v3',
         'Ideogram V2': 'ideogram-v2',
-        'Minimax Image 01': 'minimax-image-01',
         'Minimax Image': 'minimax-image-01',
         'Recraft V3 SVG': 'recraft-v3-svg',
         'Image Upscale / Real-ESRGAN': 'esrgan',
-        'Real-ESRGAN Video Upscaler': 'esrgan',
         'Bria': 'bria',
-        'SD3 Remove Background': 'remove-background',
-        'SD3 Content-Aware Fill': 'content-aware-fill',
-        'Bria Remove Background': 'bria-remove-bg',
-        'Bria Content-Aware Fill': 'bria-content-fill',
-        'Replace Background': 'replace-background',
-        'Bria Replace Background': 'bria-replace-background',
-        'Relight 2.0': 'relight-2',
-        'Kolors Virtual Try On': 'kolors-virtual-try-on',
-        'Topaz Video Upscaler': 'topaz-video-upscaler',
-        'Bria Upscale': 'bria-upscale',
-        'Image Upscale / Clarity': 'clarity-upscale',
-        'Runway Aleph': 'runway-aleph',
-        'Runway Act-Two': 'runway-act-two',
-        'Runway Gen-4': 'runway-gen-4',
-        'Runway Gen-3': 'runway-gen-3',
-        'Luma Reframe': 'luma-reframe',
-        'Luma Modify': 'luma-modify',
-        'Veo Text to Video': 'veo-text-to-video',
-        'Veo Image to Video': 'veo-image-to-video',
-        'Sora 2': 'sora-2',
-        'Hunyuan Video to Video': 'hunyuan-video-to-video',
-        'Video Smoother': 'video-smoother',
-        'Increase Frame-rate': 'frame-interpolation',
-        'Video to Audio': 'video-to-audio',
-        'Audio to Video': 'audio-to-video',
-        'Omnihuman V1.5': 'omnihuman-v1-5',
-        'Sync 2 Pro': 'sync-2-pro',
-        'Pixverse Lipsync': 'pixverse-lipsync',
-        'Kling AI Avatar': 'kling-ai-avatar',
-        'Rodin': 'rodin',
+        'Wan 2.5': 'wan-2.5-t2v',
+        'Wan 2.2': 'wan-2.2-t2v',
+        'Hunyuan Video to Video': 'hunyuan-video',
         'Hunyuan 3D': 'hunyuan-3d',
-        'Trellis': 'trellis-3d',
-        'Meshy': 'meshy-3d',
-        'Wan Vace Depth': 'wan-vace-depth',
-        'Wan Vace Pose': 'wan-vace-pose',
-        'Wan Vace Reframe': 'wan-vace-reframe',
-        'Wan Vace Outpaint': 'wan-vace-outpaint',
-        'Wan 2.5': 'wan-2-5',
-        'Wan 2.2': 'wan-2-2',
-        'Wan2.1 With Lora': 'wan-2-1-lora',
+        'Trellis': 'trellis',
+        'Meshy': 'meshy',
+        'Rodin': 'rodin',
       };
-      const model = modelMap[modelLabel] || 'stable-diffusion-3.5';
+      const model = modelMap[modelLabel] || modelLabel.toLowerCase().replace(/\s+/g, '-');
       
       // Call API
       const res = await fetch('/api/run', {
