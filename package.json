@@ -1,12 +1,13 @@
 {
   "name": "karate",
   "version": "1.0.0",
-  "description": "**Karate** is a **production-ready, fully functional node-based AI workspace** that unifies all AI models, editing tools, and creative workflows into a single, modern platform built with **Next.js**, **Convex**, and **XYFlow**.",
+  "description": "*A node-based AI workspace** that unifies all AI models, editing tools, and creative workflows into a single, modern platform built with **Next.js**, **Convex**, and **XYFlow**.",
   "main": "index.js",
   "directories": {
     "doc": "docs"
   },
   "scripts": {
+    "lint": "npm --prefix frontend run lint",
     "test:frontend": "npm --prefix frontend run test",
     "test:backend": "pytest -q backend",
     "test": "npm run -s test:frontend && npm run -s test:backend"
@@ -16,6 +17,14 @@
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
+    "@types/json-schema": "^7.0.15",
     "convex": "^1.28.0"
+  },
+  "dependencies": {
+    "@sentry/nextjs": "^10.26.0",
+    "eslint-config-next": "^16.0.3",
+    "next": "^16.0.3",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
   }
 }

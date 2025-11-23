@@ -19,11 +19,11 @@ export type ContextMenuState = {
 } | null;
 
 // Node data types
-export type StableDiffusionData = { label?: string; prompt?: string };
-export type ImageNodeData = { label?: string; imageSrc?: string; imageName?: string };
-export type TextNodeData = { label?: string; text?: string };
-export type UpscaleData = { label?: string; scale?: '2x' | '4x' | '8x' };
-export type InpaintData = { label?: string; prompt?: string };
+export type StableDiffusionData = { label?: string; prompt?: string; logo?: string };
+export type ImageNodeData = { label?: string; imageSrc?: string; imageName?: string; logo?: string };
+export type TextNodeData = { label?: string; text?: string; logo?: string };
+export type UpscaleData = { label?: string; scale?: '2x' | '4x' | '8x'; logo?: string };
+export type InpaintData = { label?: string; prompt?: string; logo?: string };
 export type PromptData = {
   label?: string;
   prompt?: string;
@@ -31,7 +31,8 @@ export type PromptData = {
   steps?: number;
   guidance?: number;
   seed?: string;
+  logo?: string;
 };
-export type ImageUploadData = { label?: string; imageSrc?: string; imageName?: string };
+export type ImageUploadData = { label?: string; imageSrc?: string; imageName?: string; logo?: string };
 
 

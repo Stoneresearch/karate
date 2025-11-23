@@ -1,12 +1,13 @@
 "use client";
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useState } from 'react';
 import { Handle, Position, useNodeId, useReactFlow } from '@xyflow/react';
 import type { PromptData, ImageUploadData, ImageNodeData } from '../types';
-import { motion } from 'framer-motion';
+import Image from 'next/image';
+import { CircularProgress } from '@mui/material'; // Ensure you have this or use a custom spinner
 
 // Base Node Component
-type BaseNodeProps = { label: string; icon: string; color: string; children?: React.ReactNode };
-const BaseNode = ({ label, icon, color, children }: BaseNodeProps) => {
+type BaseNodeProps = { label: string; icon: string; children?: React.ReactNode; isLoading?: boolean };
+const BaseNode = ({ label, icon, children, isLoading }: BaseNodeProps) => {
   const nodeId = useNodeId();
   const { setNodes } = useReactFlow();
   const onCtx = (e: React.MouseEvent) => {
@@ -20,9 +21,12 @@ const BaseNode = ({ label, icon, color, children }: BaseNodeProps) => {
     if (!nodeId) return;
     setNodes((nds) => nds.map((n) => (n.id === nodeId ? { ...n, selected: true } : { ...n, selected: false })));
   };
+
+  const isImageIcon = icon.startsWith('http') || icon.startsWith('/');
+
   return (
     <div
-      className={`node-surface min-w-[260px] relative p-4`}
+      className={`node-surface min-w-[260px] relative p-4 ${isLoading ? 'animate-pulse' : ''}`}
       style={{ outline: 'none' }}
       onContextMenu={onCtx}
       onMouseDown={onMouseDownSelect}
@@ -37,9 +41,16 @@ const BaseNode = ({ label, icon, color, children }: BaseNodeProps) => {
 
       {/* Node Header */}
       <div className="node-header">
-        <div className="flex items-center gap-2">
-          <div className="text-xl">{icon}</div>
-          <h3 className="node-title">{label}</h3>
+        <div className="flex items-center gap-2 w-full">
+          <div className="text-xl flex items-center justify-center w-6 h-6">
+            {isImageIcon ? (
+              <img src={icon} alt="" className="w-full h-full object-contain" />
+            ) : (
+              icon
+            )}
+          </div>
+          <h3 className="node-title flex-1">{label}</h3>
+          {isLoading && <CircularProgress size={16} className="text-yellow-400" />}
         </div>
       </div>
 
@@ -58,18 +69,129 @@ const BaseNode = ({ label, icon, color, children }: BaseNodeProps) => {
 };
 
 // Stable Diffusion Node
-export const StableDiffusionNode = memo(({ data }: { data: { label?: string; prompt?: string } }) => {
+export const StableDiffusionNode = memo(({ data }: { data: { label?: string; prompt?: string; status?: string; error?: string; output?: string; aspect_ratio?: string; guidance_scale?: number; output_format?: string; safety_tolerance?: number; seed?: number; logo?: string } }) => {
+  const nodeId = useNodeId();
+  const { setNodes } = useReactFlow();
+  const updateData = useCallback((patch: Record<string, unknown>) => {
+    if (!nodeId) return;
+    setNodes((nds) => nds.map((n) => n.id === nodeId ? { ...n, data: { ...n.data, ...patch } } : n));
+  }, [nodeId, setNodes]);
+
+  const onRunNode = () => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('karate-run-node', { detail: { nodeId } }));
+    }
+  };
+
+  const isLoading = data.status === 'processing';
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
   return (
-    <BaseNode label={data.label || 'Stable Diffusion 3.5'} icon="✨" color="accent-purple">
+    <BaseNode label={data.label || 'Stable Diffusion 3.5'} icon={data.logo || "✨"} isLoading={isLoading}>
       <div className="space-y-2">
         <div className="text-xs text-zinc-300 font-medium">Prompt</div>
-        <textarea defaultValue={data.prompt || 'Create an AI-generated image...'} className="node-textarea h-16" placeholder="Describe your image..." />
+        <textarea 
+          value={data.prompt || ''}
+          onChange={(e) => updateData({ prompt: e.target.value })}
+          className="node-textarea h-16" 
+          placeholder="Describe your image..." 
+          disabled={isLoading} 
+        />
+        
+        {settingsOpen && (
+          <div className="p-2 bg-zinc-900/50 rounded border border-zinc-800 space-y-2 text-[10px]">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-zinc-400 block mb-1">Aspect Ratio</label>
+                <select 
+                  className="node-input" 
+                  value={data.aspect_ratio || '1:1'} 
+                  onChange={(e) => updateData({ aspect_ratio: e.target.value })}
+                >
+                  <option value="1:1">1:1 Square</option>
+                  <option value="16:9">16:9 Landscape</option>
+                  <option value="21:9">21:9 Ultrawide</option>
+                  <option value="3:2">3:2 Classic</option>
+                  <option value="2:3">2:3 Portrait</option>
+                  <option value="4:5">4:5 Social</option>
+                  <option value="5:4">5:4 Social</option>
+                  <option value="9:16">9:16 Vertical</option>
+                  <option value="9:21">9:21 Tall</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-zinc-400 block mb-1">Format</label>
+                <select 
+                  className="node-input"
+                  value={data.output_format || 'webp'}
+                  onChange={(e) => updateData({ output_format: e.target.value })}
+                >
+                  <option value="webp">WEBP</option>
+                  <option value="png">PNG</option>
+                  <option value="jpg">JPG</option>
+                </select>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-2">
+               <div>
+                <label className="text-zinc-400 block mb-1">Guidance</label>
+                <input 
+                  type="number" 
+                  step={0.1} 
+                  className="node-input" 
+                  value={data.guidance_scale || 3.5}
+                  onChange={(e) => updateData({ guidance_scale: Number(e.target.value) })}
+                />
+               </div>
+               <div>
+                <label className="text-zinc-400 block mb-1">Safety (1-5)</label>
+                <input 
+                  type="number" 
+                  min={1} max={5} 
+                  className="node-input" 
+                  value={data.safety_tolerance || 2}
+                  onChange={(e) => updateData({ safety_tolerance: Number(e.target.value) })}
+                />
+               </div>
+            </div>
+
+            <div>
+                <label className="text-zinc-400 block mb-1">Seed (Optional)</label>
+                <input 
+                  type="number" 
+                  className="node-input" 
+                  placeholder="Random"
+                  value={data.seed || ''}
+                  onChange={(e) => updateData({ seed: e.target.value ? Number(e.target.value) : undefined })}
+                />
+            </div>
+          </div>
+        )}
+
+        {data.error && (
+            <div className="text-xs text-red-400 bg-red-900/20 p-2 rounded border border-red-800">
+                Error: {data.error}
+            </div>
+        )}
+
+        {data.output && (
+             <div className="relative w-full h-32 mt-2 rounded overflow-hidden border border-zinc-700 group">
+                <Image src={data.output} alt="Generated" fill className="object-cover" unoptimized />
+                <a href={data.output} target="_blank" rel="noopener noreferrer" className="absolute bottom-1 right-1 bg-black/60 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">Open</a>
+             </div>
+        )}
+        
         <div className="node-toolbar">
-          <button className="node-btn node-btn-primary flex-1">
+          <button 
+            className={`node-btn flex-1 ${settingsOpen ? 'bg-zinc-700 text-white' : ''}`} 
+            disabled={isLoading}
+            onClick={() => setSettingsOpen(!settingsOpen)}
+          >
             ⚙️ Settings
           </button>
-          <button className="node-btn flex-1">
-            🎨 Generate
+          <button className="node-btn flex-1" disabled={isLoading} onClick={onRunNode}>
+            {isLoading ? 'Generating...' : '🎨 Generate'}
           </button>
         </div>
       </div>
@@ -82,11 +204,16 @@ StableDiffusionNode.displayName = 'StableDiffusionNode';
 // Image Node
 export const ImageNode = memo(({ data }: { data: ImageNodeData }) => {
   return (
-    <BaseNode label={data.label || 'Image'} icon="🖼️" color="accent-cyan">
+    <BaseNode label={data.label || 'Image'} icon={data.logo || "🖼️"}>
       <div className="space-y-2">
-        <div className="w-full h-24 bg-zinc-800/60 border border-zinc-700 rounded flex items-center justify-center overflow-hidden">
+        <div className="relative w-full h-24 bg-zinc-800/60 border border-zinc-700 rounded flex items-center justify-center overflow-hidden">
           {data.imageSrc ? (
-            <img src={data.imageSrc} alt={data.imageName || data.label || 'image'} className="max-h-24 object-contain" />
+            <Image
+              src={data.imageSrc}
+              alt={data.imageName || data.label || 'image'}
+              fill
+              className="object-contain"
+            />
           ) : (
             <span className="text-3xl">🖼️</span>
           )}
@@ -104,7 +231,7 @@ ImageNode.displayName = 'ImageNode';
 // Text Node
 export const TextNode = memo(({ data }: { data: { label?: string; text?: string } }) => {
   return (
-    <BaseNode label={data.label || 'Text Input'} icon="📝" color="accent-orange">
+    <BaseNode label={data.label || 'Text Input'} icon="📝">
       <div className="space-y-2">
         <input type="text" defaultValue={data.text || 'Enter text...'} className="node-input" placeholder="Enter text..." />
       </div>
@@ -116,8 +243,14 @@ TextNode.displayName = 'TextNode';
 
 // Upscale Node
 export const UpscaleNode = memo(({ data }: { data: { label?: string; scale?: string } }) => {
+  const nodeId = useNodeId();
+  const onRunNode = () => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('karate-run-node', { detail: { nodeId } }));
+    }
+  };
   return (
-    <BaseNode label={data.label || 'Upscale'} icon="🔍" color="accent-blue">
+    <BaseNode label={data.label || 'Upscale'} icon="🔍">
       <div className="space-y-2">
         <div className="text-xs text-zinc-300 font-medium">Scale Factor</div>
         <select className="node-input">
@@ -125,7 +258,7 @@ export const UpscaleNode = memo(({ data }: { data: { label?: string; scale?: str
           <option>4x (Quad)</option>
           <option>8x (Ultra)</option>
         </select>
-        <button className="node-btn w-full">
+        <button className="node-btn w-full" onClick={onRunNode}>
           ⚡ Upscale
         </button>
       </div>
@@ -137,12 +270,18 @@ UpscaleNode.displayName = 'UpscaleNode';
 
 // Inpaint Node
 export const InpaintNode = memo(({ data }: { data: { label?: string; prompt?: string } }) => {
+  const nodeId = useNodeId();
+  const onRunNode = () => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('karate-run-node', { detail: { nodeId } }));
+    }
+  };
   return (
-    <BaseNode label={data.label || 'Inpaint'} icon="🎨" color="accent-pink">
+    <BaseNode label={data.label || 'Inpaint'} icon="🎨">
       <div className="space-y-2">
         <div className="text-xs text-zinc-300 font-medium">Mask & Prompt</div>
         <textarea defaultValue={data.prompt || 'What to inpaint...'} className="node-textarea h-12" placeholder="Describe what to paint..." />
-        <button className="node-btn w-full">
+        <button className="node-btn w-full" onClick={onRunNode}>
           🎨 Inpaint
         </button>
       </div>
@@ -169,7 +308,6 @@ export const PromptNode = memo(({ data }: { data: PromptData }) => {
     <BaseNode
       label={data.label || 'Prompt'}
       icon="📝"
-      color="from-yellow-900/80 to-yellow-800/80"
     >
       <div className="space-y-2">
         <div className="text-xs text-zinc-300 font-medium">Prompt</div>
@@ -232,12 +370,16 @@ export const ImageUploadNode = memo(({ data }: { data: ImageUploadData }) => {
     <BaseNode
       label={data.label || 'Image Upload'}
       icon="📤"
-      color="from-cyan-900/80 to-cyan-800/80"
     >
       <div className="space-y-2">
-        <div className="w-full h-24 bg-gradient-to-br from-cyan-600/20 to-cyan-500/20 border border-cyan-500/30 rounded flex items-center justify-center overflow-hidden">
+        <div className="relative w-full h-24 bg-gradient-to-br from-cyan-600/20 to-cyan-500/20 border border-cyan-500/30 rounded flex items-center justify-center overflow-hidden">
           {data.imageSrc ? (
-            <img src={data.imageSrc} alt={data.imageName || 'uploaded'} className="max-h-24 object-contain" />
+            <Image
+              src={data.imageSrc}
+              alt={data.imageName || 'uploaded'}
+              fill
+              className="object-contain"
+            />
           ) : (
             <span className="text-3xl">🖼️</span>
           )}

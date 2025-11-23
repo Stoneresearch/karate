@@ -17,7 +17,8 @@ export default defineSchema({
     email: v.string(),
     credits: v.number(),
     createdAt: v.number(),
-  }).index('by_email', ['email']),
+    tokenIdentifier: v.optional(v.string()), // Added field
+  }).index('by_email', ['email']).index('by_token', ['tokenIdentifier']),
 
   // Organizations and memberships (roles: admin, staff, user)
   organizations: defineTable({
@@ -43,13 +44,23 @@ export default defineSchema({
   }).index('by_type', ['type']),
 
   runs: defineTable({
-    workflowId: v.id('workflows'),
+    workflowId: v.optional(v.id('workflows')),
     userId: v.id('users'),
     status: v.string(),
     result: v.any(),
     startedAt: v.number(),
     completedAt: v.optional(v.number()),
+    cost: v.optional(v.number()), // Credits used
   }).index('by_workflow', ['workflowId']),
+  
+  transactions: defineTable({
+    userId: v.id('users'),
+    type: v.string(), // 'credit_purchase' | 'run_cost' | 'manual_deduction' | 'refund'
+    amount: v.number(), // Positive for credit, negative for debit
+    referenceId: v.optional(v.string()), // e.g. runId or stripeId
+    description: v.optional(v.string()),
+    createdAt: v.number(),
+  }).index('by_user', ['userId']),
 
   // Simple ticketing to support admin/staff workflows
   tickets: defineTable({
@@ -90,5 +101,3 @@ export default defineSchema({
     .index('by_type', ['type'])
     .index('by_createdAt', ['createdAt']),
 });
-
-

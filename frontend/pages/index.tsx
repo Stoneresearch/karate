@@ -1,14 +1,11 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { SignedIn, SignedOut, UserButton } from '@clerk/nextjs';
+import LandingHeader from '../components/Layout/LandingHeader';
 
 export default function Home() {
-  const pk = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || process.env.CLERK_PUBLISHABLE_KEY;
-  const CLERK_ENABLED = typeof pk === 'string' && /^pk_(test|live)_[A-Za-z0-9]{20,}/.test(pk);
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [isScrolled, setIsScrolled] = useState(false);
-  const [isClient, setIsClient] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const carouselRef = useRef<HTMLDivElement>(null);
   const isDraggingRef = useRef(false);
@@ -28,67 +25,18 @@ export default function Home() {
   ];
 
   useEffect(() => {
-    setIsClient(true);
-
-    const handleMouseMove = (e: MouseEvent) => {
-      setMousePosition({ x: e.clientX, y: e.clientY });
-    };
-
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 50);
     };
 
-    window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('scroll', handleScroll);
 
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('scroll', handleScroll);
     };
   }, []);
 
-  const onCarouselMouseDown = (e: React.MouseEvent) => {
-    if (!carouselRef.current) return;
-    isDraggingRef.current = true;
-    dragStartXRef.current = e.clientX;
-    scrollStartRef.current = carouselRef.current.scrollLeft;
-    (carouselRef.current as HTMLDivElement).style.cursor = 'grabbing';
-  };
-  const onCarouselMouseMove = (e: React.MouseEvent) => {
-    if (!carouselRef.current || !isDraggingRef.current) return;
-    const dx = e.clientX - dragStartXRef.current;
-    carouselRef.current.scrollLeft = scrollStartRef.current - dx;
-  };
-  const onCarouselMouseUp = () => {
-    if (!carouselRef.current) return;
-    isDraggingRef.current = false;
-    (carouselRef.current as HTMLDivElement).style.cursor = 'grab';
-  };
-  const onCarouselMouseLeave = () => {
-    if (!carouselRef.current) return;
-    isDraggingRef.current = false;
-    (carouselRef.current as HTMLDivElement).style.cursor = 'grab';
-  };
-
-  const onCarouselWheel = (e: React.WheelEvent) => {
-    if (!carouselRef.current) return;
-    carouselRef.current.scrollLeft += e.deltaY;
-    e.preventDefault();
-  };
-
-  const models = [
-    'GPTimg1',
-    'Ideogram V3',
-    'Flux Pro 1.1 Ultra',
-    'Wan',
-    'SD 3.5',
-    'Runway Gen-4',
-    'Imagen 3',
-    'Veo 3',
-    'Recraft V3',
-    'Kling',
-    'Claude 3',
-  ];
+  // Horizontal marquee interactions were removed for now; can be reintroduced with proper hooks later.
 
   const tools = [
     { name: 'Crop', position: 'top-20 left-10' },
@@ -106,75 +54,7 @@ export default function Home() {
 
   return (
     <main className={`min-h-screen overflow-x-hidden bg-white text-zinc-900 dark:bg-black dark:text-white`} ref={containerRef}>
-      <motion.nav
-        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${
-          isScrolled ? 'bg-white/70 dark:bg-zinc-900/70 backdrop-blur-md border-b border-zinc-200/60 dark:border-zinc-800' : 'bg-transparent'
-        }`}
-        initial={{ y: -100 }}
-        animate={{ y: 0 }}
-        transition={{ duration: 0.6 }}
-      >
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <motion.div
-            className="flex items-center gap-3"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            <div className="h-8 w-8 rounded-sm bg-gradient-to-br from-[#f2c6ff] via-[#ffd27a] to-[#7ae1ff]" />
-            <span className="font-bold text-xl tracking-tight">KARATE</span>
-          </motion.div>
-
-          <div className="hidden md:flex items-center gap-8 text-sm">
-            {[
-              { label: 'Docs', href: '/docs' },
-              { label: 'Enterprise', href: '#' },
-              { label: 'Pricing', href: '#' },
-              { label: 'Explore workflows', href: '/dashboard' },
-            ].map((item) => (
-              <motion.a
-                key={item.label}
-                href={item.href}
-                className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white transition-colors"
-              >
-                {item.label}
-              </motion.a>
-            ))}
-          </div>
-
-          <div className="flex items-center gap-4">
-            {CLERK_ENABLED ? (
-              <>
-                <SignedOut>
-                  <motion.a
-                    href="/sign-in"
-                    className="text-sm text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white transition-colors hidden md:block"
-                  >
-                    Sign in
-                  </motion.a>
-                </SignedOut>
-                <SignedIn>
-                  <UserButton afterSignOutUrl="/" appearance={{ elements: { avatarBox: 'w-7 h-7' } }} />
-                </SignedIn>
-              </>
-            ) : (
-              <motion.a
-                href="/sign-in"
-                className="text-sm text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white transition-colors hidden md:block"
-              >
-                Sign in
-              </motion.a>
-            )}
-            <motion.a
-              href="/dashboard"
-              className="btn-primary"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              Start Now
-            </motion.a>
-          </div>
-        </div>
-      </motion.nav>
+      <LandingHeader isScrolled={isScrolled} />
 
       <section className="relative min-h-[100vh] pt-28 pb-24 overflow-hidden hero-ambient">
         <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
@@ -197,8 +77,8 @@ export default function Home() {
                 ))}
               </div>
               <div className="mt-8 flex items-center gap-3 flex-wrap">
-                <a href="/dashboard" className="btn-primary">Start Now</a>
-                <a href="#models" className="btn-secondary">Explore Engines</a>
+                <Link href="/dashboard" className="btn-primary">Start Now</Link>
+                <Link href="#models" className="btn-secondary">Explore Engines</Link>
               </div>
             </div>
             <div className="lg:col-span-6">
@@ -250,8 +130,8 @@ export default function Home() {
                 className="rounded-2xl overflow-hidden border border-zinc-200 dark:border-zinc-800 bg-white/60 dark:bg-zinc-900/40 backdrop-blur shadow-lg"
                 whileHover={{ y: -6 }}
               >
-                <div className="aspect-[16/11]">
-                  <img src={card.src} alt={card.label} className="w-full h-full object-cover" />
+                <div className="aspect-[16/11] relative">
+                  <Image src={card.src} alt={card.label} fill className="object-cover" />
                 </div>
                 <div className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-300">{card.label}</div>
               </motion.div>
@@ -398,8 +278,8 @@ export default function Home() {
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <a href="/dashboard" className="btn-primary">Open Studio →</a>
-              <a href="/docs" className="btn-secondary">Read Docs</a>
+              <Link href="/dashboard" className="btn-primary">Open Studio →</Link>
+              <Link href="/docs" className="btn-secondary">Read Docs</Link>
             </div>
           </div>
         </div>

@@ -15,7 +15,8 @@
 🎨 **Complete AI Model Integration**
 - Stable Diffusion 3.5, Flux Pro, DALL·E 3
 - Ideogram V3, Minimax Image, Runway Gen-4
-- All models ready for API integration
+- **Non-blocking generation**: Jobs run in the background via Redis queue
+- Real-time status polling
 
 🛠️ **Professional Editing Tools**
 - Upscale, Inpaint, Crop, Blur, Invert
@@ -29,22 +30,23 @@
 - Dark mode with yellow/cyan accent colors
 - Responsive design
 
-🔄 **Real-Time Features**
+🔄 **Real-Time & Reliable**
 - Live workflow syncing via Convex
-- Collaborative editing ready
+- **Redis-backed Job Queue**: Tasks survive backend restarts
 - Persistent storage
 
 ---
 
 ## 📋 Tech Stack
 
-- **Frontend**: Next.js 15, React 19, TypeScript
+- **Frontend**: Next.js 16, React 19, TypeScript
 - **Styling**: Tailwind CSS, Framer Motion
 - **Node Editor**: XYFlow 12
 - **Real-Time DB**: Convex
+- **Job Queue**: Redis
+- **Backend**: Python FastAPI (Async)
 - **State Management**: Zustand, Jotai
 - **Animations**: Framer Motion, GSAP
-- **API Client**: Convex React
 
 ---
 
@@ -64,17 +66,27 @@ karate/
 │   ├── pages/
 │   │   ├── index.tsx               # Animated landing page
 │   │   ├── editor.tsx              # Editor page with loader
+│   │   ├── api/                    # Next.js API Routes
+│   │   │   ├── run.ts              # Job submission (non-blocking)
+│   │   │   └── status.ts           # Job status polling
 │   │   └── _app.tsx                # App provider
 │   ├── lib/
+│   │   ├── models.ts               # Centralized Model Definitions
 │   │   └── convex/
 │   │       └── client.tsx          # Convex client setup
-│   ├── styles/
-│   │   └── globals.css             # Global styles & animations
 │   └── package.json
 ├── convex/
 │   ├── schema.ts                   # Database schema
 │   ├── workflows.ts                # Workflow queries & mutations
+│   ├── grant_credits.ts            # Admin script for credits
 │   └── _generated/                 # Auto-generated Convex API
+├── backend/                        # Python FastAPI Backend
+│   ├── main.py                     # API Entrypoint
+│   ├── api/v1/ai.py                # AI Endpoints
+│   ├── workers/tasks.py            # Redis-backed Async Workers
+│   └── core/
+│       ├── config.py               # Centralized Backend Config
+│       └── redis.py                # Redis Connection
 └── docs/                           # Documentation (public + technical)
     ├── GET_STARTED.md
     ├── QUICK_START.md
@@ -87,17 +99,31 @@ karate/
 ## 🔧 Installation & Setup
 
 ### Prerequisites
-- Node.js 18+ and npm/yarn
+- Node.js 20.9+ (required by Next.js 16) and npm/yarn
 - Convex account (free tier available)
+- Python 3.10+ (for backend)
+- **Redis**: Required for task queue persistence
 
-### 1. Install Frontend Dependencies
+### 1. Install Redis (Required)
+**macOS (Homebrew):**
+```bash
+brew install redis
+brew services start redis
+```
+**Linux:**
+```bash
+sudo apt-get install redis-server
+sudo service redis-server start
+```
+
+### 2. Install Frontend Dependencies
 
 ```bash
 cd frontend
 npm install
 ```
 
-### 2. Set Up Convex
+### 3. Set Up Convex
 
 ```bash
 # Install Convex CLI globally (if not already installed)
@@ -112,7 +138,7 @@ This will:
 - Set up your Convex project
 - Generate TypeScript types
 
-### 3. Start Development Servers
+### 4. Start Development Servers
 
 **Terminal 1: Convex Backend**
 ```bash
@@ -125,15 +151,42 @@ cd frontend
 npm run dev
 ```
 
-Your app will be available at `http://localhost:3000`
+**Terminal 3: Python Backend**
 
-**Terminal 3 (optional): Python Backend**
+We have provided a helper script to automatically set up the virtual environment and install dependencies:
+
 ```bash
-python3 -m venv backend/.venv && source backend/.venv/bin/activate
+# From the project root
+chmod +x start_backend.sh  # Make it executable (only needed once)
+./start_backend.sh
+```
+
+Or manually:
+
+```bash
+python3 -m venv backend/.venv
+source backend/.venv/bin/activate  # On Windows: backend\.venv\Scripts\activate
 python3 -m pip install -U pip
 python3 -m pip install -r backend/requirements.txt
 export INTERNAL_API_KEY=dev-secret
 python3 -m uvicorn backend.main:app --reload
+```
+
+---
+
+## 💰 Credit System & Admin Tools
+
+The platform includes a credit system for usage limits.
+
+### Granting Credits (Admin)
+You can grant credits to any test user via the CLI script:
+
+```bash
+# Syntax
+npx tsx convex/grant_credits.ts <user_email> <amount>
+
+# Example
+npx tsx convex/grant_credits.ts user@example.com 1000
 ```
 
 ---
@@ -156,13 +209,6 @@ python3 -m uvicorn backend.main:app --reload
 4. **Run Workflow**: Click the "Run" button in the top bar
 5. **Save**: Changes auto-save to Convex
 
-### Node Types
-- **Stable Diffusion**: AI image generation from text
-- **Image**: Upload and manage images
-- **Text**: Text input nodes
-- **Upscale**: Enhance image resolution
-- **Inpaint**: Edit specific image areas
-
 ---
 
 ## 🎨 Customization
@@ -181,16 +227,9 @@ theme: {
 ```
 
 ### Add New Node Types
-1. Create component in `frontend/components/NodeEditor/NodeTypes/index.tsx`
-2. Export it and add to `nodeTypes` in `Canvas.tsx`
-3. Add to models/tools array in `Canvas.tsx`
-
-### Modify Landing Page
-Edit `frontend/pages/index.tsx`:
-- Change heading text
-- Adjust animation timing
-- Modify colors and gradients
-- Add new sections
+1. Add definitions to `frontend/lib/models.ts` (frontend UI) and `backend/core/config.py` (backend costs).
+2. Create component in `frontend/components/NodeEditor/NodeTypes/index.tsx`
+3. Export it and add to `nodeTypes` in `Canvas.tsx`
 
 ---
 
@@ -212,56 +251,6 @@ Set `NEXT_PUBLIC_CONVEX_URL` environment variable in Vercel to your production C
 
 ---
 
-## 📊 Current Implementation Status
-
-✅ **Completed**:
-- Landing page with animations & parallax
-- Full XYFlow node editor
-- Collapsible sidebar with grid
-- 5 node types (Stable Diffusion, Image, Text, Upscale, Inpaint)
-- Convex real-time database integration
-- Smooth transitions & animations
-- Responsive design
-- Auto-save functionality
-
-🔄 **Ready to Add**:
-- AI model API integration (Replicate, Modal)
-- More node types (Flux, DALL·E, etc.)
-- Node parameter customization
-- Workflow templates
-- Export workflows
-- User authentication
-- Credit system
-- Workflow sharing
-
----
-
-## 🎯 Next Steps
-
-1. **Connect AI APIs**:
-   - Set up Replicate/Modal for model inference
-   - Create `/api` endpoints in backend
-   - Connect Run button to API calls
-
-2. **Add More Models**:
-   - Add card in sidebar
-   - Create node component
-   - Add to nodeTypes mapping
-
-3. **Enhance UI**:
-   - Add node labels/descriptions
-   - Implement node search
-   - Add templates library
-   - Improve mobile responsiveness
-
-4. **Backend Integration**:
-   - Implement FastAPI workers for AI tasks
-   - Set up credit system
-   - Add workflow validation
-   - Create audit logs
-
----
-
 ## 📝 Environment Variables
 
 Create `.env.local` in frontend root:
@@ -269,58 +258,13 @@ Create `.env.local` in frontend root:
 NEXT_PUBLIC_CONVEX_URL=<your-convex-url>
 ```
 
-Backend `.env`:
+Backend `.env` (create in `backend/.env`):
 ```
+INTERNAL_API_KEY=dev-secret
 REPLICATE_API_TOKEN=<your-token>
 OPENAI_API_KEY=<your-key>
+REDIS_URL=redis://localhost:6379/0  # Optional if local
 ```
-
----
-
-## 🐛 Troubleshooting
-
-**Convex connection error?**
-- Ensure `NEXT_PUBLIC_CONVEX_URL` is set correctly
-- Run `npx convex dev` in another terminal
-- Check firewall/proxy settings
-
-**XYFlow not rendering?**
-- Clear `.next` folder: `rm -rf .next`
-- Reinstall dependencies: `npm install`
-- Ensure React version is 18+
-
-**Sidebar not appearing?**
-- Check browser console for errors
-- Clear browser cache
-- Try incognito mode
-
----
-
-## 📚 Documentation
-
-See `docs/instruction.md` for:
-- Complete technical architecture
-- AI models list
-- Backend API endpoints
-- Deployment guides
-- Security considerations
-- Cost optimization strategies
-
----
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create feature branch: `git checkout -b feature/amazing-feature`
-3. Commit changes: `git commit -m 'Add amazing feature'`
-4. Push to branch: `git push origin feature/amazing-feature`
-5. Open Pull Request
-
----
-
-## 📄 License
-
-MIT License - feel free to use this project for personal and commercial purposes.
 
 ---
 
@@ -334,7 +278,6 @@ For issues, feature requests, or questions:
 
 ---
 
-**Built with ❤️ using Next.js, Convex, and XYFlow**
+**Built with ❤️ using Next.js, Convex, Redis, and XYFlow**
 
 🚀 Ready to create amazing AI workflows!
-

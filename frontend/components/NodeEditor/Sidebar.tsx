@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @next/next/no-img-element */
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card, CardBody, Input, Tab, Tabs } from '@heroui/react';
@@ -10,7 +11,7 @@ interface SidebarProps {
   isOpen: boolean;
   models: Array<SidebarItem>;
   tools: Array<SidebarItem>;
-  onAddNode: (type: string, label: string) => void;
+  onAddNode: (type: string, label: string, logo?: string) => void;
   onActiveCategoryChange?: (category: string) => void;
   scrollToCategory?: string;
   onConsumeScrollToCategory?: () => void;
@@ -23,7 +24,6 @@ export default function Sidebar({ isOpen, models, tools, onAddNode, onActiveCate
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<string>('models');
   const [draggedItem, setDraggedItem] = useState<SidebarItem | null>(null);
-  const [activeCategory, setActiveCategory] = useState<string>('');
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
 
@@ -40,6 +40,7 @@ export default function Sidebar({ isOpen, models, tools, onAddNode, onActiveCate
     'Bria': 'bria.ai',
     'Topaz': 'topazlabs.com',
     'Flux': 'blackforestlabs.ai',
+    'Black Forest Labs': 'blackforestlabs.ai',
     'Pixverse': 'pixverse.ai',
     'Meshy': 'meshy.ai',
     'Trellis': 'trellis.xyz',
@@ -51,6 +52,15 @@ export default function Sidebar({ isOpen, models, tools, onAddNode, onActiveCate
     'Reve': 'reve.ai',
     'Higgsfield': 'higgsfield.ai',
     'Nano': 'nanonets.com',
+    'Minimax': 'minimax.ai',
+    'Rodin': 'hyperhuman.deemos.com',
+    'Seedream': 'seedream.ai',
+    'Wan': 'wan.ai',
+    'Sync': 'sync.labs',
+    'Kolors': 'kolors.ai',
+    'Dream': 'dream.ai',
+    'Clarity': 'clarity.ai',
+    'ESRGAN': 'github.com',
   };
 
   // Optional Simple Icons fallback when Clearbit is missing
@@ -63,8 +73,18 @@ export default function Sidebar({ isOpen, models, tools, onAddNode, onActiveCate
     'Ideogram': 'ideogram',
     'Topaz': 'topazlabs',
     'Flux': 'blackforestlabs',
+    'Minimax': 'minimax',
+    'Recraft': 'recraft',
+    'Pixverse': 'pixverse',
+    'Meshy': 'meshy',
+    'Trellis': 'trellis',
+    'Kling': 'klingai',
+    'Bria': 'bria',
+    'ESRGAN': 'github',
+    'Midjourney': 'midjourney',
   };
-  const noFrameBrands = new Set(['Google']);
+  
+  const noFrameBrands = new Set(['Google', 'Stability', 'OpenAI', 'Flux', 'Black Forest Labs']);
   
   // Filter by category and search
   const categories = Array.from(new Set(items.map((item) => item.category)));
@@ -84,7 +104,7 @@ export default function Sidebar({ isOpen, models, tools, onAddNode, onActiveCate
   }, [focusSearchSignal]);
 
   useEffect(() => {
-    if (externalActiveTab && externalActiveTab !== activeTab) {
+    if (externalActiveTab) {
       setActiveTab(externalActiveTab);
     }
   }, [externalActiveTab]);
@@ -94,22 +114,46 @@ export default function Sidebar({ isOpen, models, tools, onAddNode, onActiveCate
     if (!container) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        const visible = entries
-          .filter((e) => e.isIntersecting)
-          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        // Find the entry that is most visible in the top detection zone
+        const visible = entries.filter((e) => e.isIntersecting);
+        if (visible.length === 0) return;
+        
+        // Sort by top position. The first one is the one highest up in the detection zone.
+        // Since we use a narrow rootMargin at the top, this should effectively correspond to the "sticky header" logic.
+        visible.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        
         const next = visible[0]?.target.getAttribute('data-category');
-        if (next) {
-          setActiveCategory(next);
-          if (onActiveCategoryChange) onActiveCategoryChange(next);
+        if (next && onActiveCategoryChange) {
+          onActiveCategoryChange(next);
         }
       },
-      { root: container, threshold: 0.15 }
+      // Constrain detection to a strip near the top of the container (top 5% to 30% down)
+      // This ensures we highlight the section that is actually at the top of the view.
+      { root: container, rootMargin: '-5% 0px -70% 0px', threshold: 0 }
     );
     Object.values(sectionRefs.current).forEach((el) => {
       if (el) observer.observe(el);
     });
     return () => observer.disconnect();
   }, [activeTab, searchQuery, items.length, onActiveCategoryChange]);
+
+  const handleCategoryClick = (category: string) => {
+    const container = scrollContainerRef.current;
+    const section = sectionRefs.current[category];
+    if (!container || !section) return;
+    
+    // Robust scroll calculation using getBoundingClientRect
+    const containerRect = container.getBoundingClientRect();
+    const sectionRect = section.getBoundingClientRect();
+    const currentScroll = container.scrollTop;
+    
+    // Calculate target scroll position relative to container
+    // Add slight offset to align flush (taking into account padding if necessary)
+    const relativeTop = sectionRect.top - containerRect.top;
+    const top = currentScroll + relativeTop;
+    
+    container.scrollTo({ top, behavior: 'smooth' });
+  };
 
   useEffect(() => {
     if (!scrollToCategory) return;
@@ -124,6 +168,7 @@ export default function Sidebar({ isOpen, models, tools, onAddNode, onActiveCate
 
     // If tab needs to change, switch first and then scroll after render
     if (targetTab !== activeTab) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setActiveTab(targetTab);
       // Wait for the tab content to render sections, then scroll
       requestAnimationFrame(() => {
@@ -133,16 +178,7 @@ export default function Sidebar({ isOpen, models, tools, onAddNode, onActiveCate
       handleCategoryClick(scrollToCategory);
     }
     if (onConsumeScrollToCategory) onConsumeScrollToCategory();
-  }, [scrollToCategory]);
-
-  const handleCategoryClick = (category: string) => {
-    const container = scrollContainerRef.current;
-    const section = sectionRefs.current[category];
-    if (!container || !section) return;
-    const headerHeight = ((container.firstElementChild as HTMLElement | null)?.clientHeight) ?? 0;
-    const top = section.offsetTop - headerHeight;
-    container.scrollTo({ top, behavior: 'smooth' });
-  };
+  }, [scrollToCategory, activeTab, models, tools, onConsumeScrollToCategory]);
 
   const handleDragStart = (e: React.DragEvent, item: SidebarItem) => {
     setDraggedItem(item);
@@ -161,9 +197,9 @@ export default function Sidebar({ isOpen, models, tools, onAddNode, onActiveCate
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Backdrop */}
+          {/* Backdrop (stops at editor navbar height on mobile) */}
           <motion.div
-            className="fixed inset-0 bg-black/50 z-20 md:hidden"
+            className="fixed top-14 left-0 right-0 bottom-0 bg-black/50 z-20 md:hidden"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -171,15 +207,23 @@ export default function Sidebar({ isOpen, models, tools, onAddNode, onActiveCate
 
           {/* Sidebar */}
           <motion.div
-            className="fixed md:relative w-64 h-screen bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex flex-col z-30 md:z-auto"
+            className="fixed top-14 bottom-0 left-16 w-64 bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex flex-col z-30"
             initial={{ x: '-100%' }}
             animate={{ x: 0 }}
             exit={{ x: '-100%' }}
             transition={{ duration: 0.3 }}
           >
             {/* Header */}
-            <div className="p-4 border-b border-zinc-200 dark:border-zinc-800">
-              <h2 className="text-lg font-bold text-white mb-3">AI Models & Tools</h2>
+            <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-bold text-white">AI Models & Tools</h2>
+                <a href="/dashboard" className="p-2 rounded hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors" title="Back to Home">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                    <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                  </svg>
+                </a>
+              </div>
               <Input
                 isClearable
                 type="text"
@@ -230,11 +274,19 @@ export default function Sidebar({ isOpen, models, tools, onAddNode, onActiveCate
                         {group.category}
                       </h3>
                       <div className="grid grid-cols-2 gap-2">
-                        {group.items.map((item) => (
+                        {group.items.map((item) => {
+                          const googleColor = 'https://www.gstatic.com/images/branding/product/2x/googleg_48dp.png';
+                          const clearbit = brandDomain[item.brand] ? `https://logo.clearbit.com/${brandDomain[item.brand]}` : undefined;
+                          const simpleIcon = brandSimpleIconsSlug[item.brand] ? `https://cdn.simpleicons.org/${brandSimpleIconsSlug[item.brand]}/ffffff` : undefined;
+                          const inferredLogo = item.brand === 'Google' ? googleColor : (item.logo || clearbit || simpleIcon);
+                          const baseClass = noFrameBrands.has(item.brand) ? 'w-8 h-8 object-contain mx-auto' : 'w-8 h-8 object-contain rounded-sm bg-white/5 border border-white/10 mx-auto';
+
+                          return (
                           <motion.div
                             key={item.name}
                             whileHover={{ scale: 1.05, y: -2 }}
                             whileTap={{ scale: 0.95 }}
+                            className="h-full"
                           >
                         <div
                           role="button"
@@ -242,21 +294,15 @@ export default function Sidebar({ isOpen, models, tools, onAddNode, onActiveCate
                           draggable
                           onDragStart={(e) => handleDragStart(e, item)}
                           onDragEnd={handleDragEnd}
-                          onClick={() => onAddNode(item.type, item.name)}
-                          className={`cursor-move ${draggedItem?.name === item.name ? 'opacity-50' : ''}`}
-                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onAddNode(item.type, item.name); }}
+                          onClick={() => onAddNode(item.type, item.name, inferredLogo)}
+                          className={`cursor-move h-full flex flex-col ${draggedItem?.name === item.name ? 'opacity-50' : ''}`}
+                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onAddNode(item.type, item.name, inferredLogo); }}
                         >
-                        <Card className="bg-white dark:bg-gradient-to-br dark:from-zinc-800 dark:to-zinc-900 border border-zinc-200 dark:border-zinc-700 hover:border-yellow-400/50 transition-all overflow-hidden">
-                          <CardBody className="relative p-3 gap-2 flex flex-col items-center text-center overflow-hidden">
+                        <Card className="bg-white dark:bg-gradient-to-br dark:from-zinc-800 dark:to-zinc-900 border border-zinc-200 dark:border-zinc-700 hover:border-yellow-400/50 transition-all overflow-hidden h-full">
+                          <CardBody className="relative p-3 gap-2 flex flex-col items-center justify-between text-center overflow-hidden h-full">
                             {/* Logo or emoji icon */}
                             <div className="flex items-center justify-center">
-                              {(() => {
-                                const googleColor = 'https://www.gstatic.com/images/branding/product/2x/googleg_48dp.png';
-                                const clearbit = brandDomain[item.brand] ? `https://logo.clearbit.com/${brandDomain[item.brand]}` : undefined;
-                                const simpleIcon = brandSimpleIconsSlug[item.brand] ? `https://cdn.simpleicons.org/${brandSimpleIconsSlug[item.brand]}/ffffff` : undefined;
-                                const inferredLogo = item.brand === 'Google' ? googleColor : (item.logo || clearbit || simpleIcon);
-                                const baseClass = noFrameBrands.has(item.brand) ? 'w-8 h-8 object-contain mx-auto' : 'w-8 h-8 object-contain rounded-sm bg-white/5 border border-white/10 mx-auto';
-                                return inferredLogo ? (
+                              {inferredLogo ? (
                                   <img
                                     src={inferredLogo}
                                     alt={item.brand}
@@ -275,20 +321,26 @@ export default function Sidebar({ isOpen, models, tools, onAddNode, onActiveCate
                                       }
                                     }}
                                   />
-                                ) : null;
-                              })()}
+                                ) : (
+                                  <div className="text-3xl" aria-hidden>
+                                    {item.icon}
+                                  </div>
+                                )
+                              }
                               <div data-fallback-icon="true" className="text-3xl hidden" aria-hidden>
                                 {item.icon}
                               </div>
                             </div>
                             
                             {/* Name & Brand only */}
-                            <p className="text-xs font-semibold text-zinc-900 dark:text-white text-center whitespace-normal break-words">
-                              {item.name}
-                            </p>
-                            <p className="text-xs text-zinc-500 mt-0.5">
-                              {item.brand}
-                            </p>
+                            <div className="flex flex-col items-center justify-center w-full">
+                              <p className="text-xs font-semibold text-zinc-900 dark:text-white text-center whitespace-normal break-words line-clamp-2">
+                                {item.name}
+                              </p>
+                              <p className="text-[10px] text-zinc-500 mt-0.5">
+                                {item.brand}
+                              </p>
+                            </div>
                             
                             {/* Drag hint */}
                             <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity bg-black/40 rounded">
@@ -298,7 +350,8 @@ export default function Sidebar({ isOpen, models, tools, onAddNode, onActiveCate
                         </Card>
                         </div>
                           </motion.div>
-                        ))}
+                        );
+                        })}
                       </div>
                     </div>
                   ))}

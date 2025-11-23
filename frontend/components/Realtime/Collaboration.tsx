@@ -3,67 +3,66 @@ import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../lib/convex/api';
 import type { Id } from '../../lib/convex/dataModel';
 import type { Node, Edge } from '@xyflow/react';
+import { useEffect } from 'react';
+import { useUser } from '@clerk/nextjs';
+import { useRouter } from 'next/router';
 
 export function useWorkflow(roomId: string) {
+  const { user } = useUser();
+  const router = useRouter();
+  const storeUser = useMutation(api.users.getOrCreate);
+
+  // Sync user to Convex on load
+  useEffect(() => {
+    if (user && user.primaryEmailAddress?.emailAddress) {
+        storeUser({
+            email: user.primaryEmailAddress.emailAddress,
+            name: user.fullName || user.username || 'User',
+        });
+    }
+  }, [user, storeUser]);
+
   // Try to parse roomId as Convex ID, fallback to string for compatibility
   let workflowId: Id<'workflows'> | null = null;
-  try {
-    // If roomId looks like a Convex ID, use it directly
-    if (roomId && roomId.length > 0 && roomId !== 'demo-room') {
-      workflowId = roomId as Id<'workflows'>;
-    }
-  } catch {
-    // If parsing fails, we'll create a new workflow
+  // Treat any non-empty, non-demo ID as a Convex document id
+  if (roomId && roomId.length > 0 && roomId !== 'demo-room') {
+    workflowId = roomId as Id<'workflows'>;
   }
 
-  const hasConvex =
-    Boolean((api as any)?.workflows?.get) &&
-    Boolean((api as any)?.workflows?.create) &&
-    Boolean((api as any)?.workflows?.getOrCreate) &&
-    Boolean((api as any)?.workflows?.update);
-
-  // Get workflow if we have an ID
-  const workflow = hasConvex
-    ? useQuery((api as any).workflows.get, workflowId ? { id: workflowId } : 'skip')
-    : undefined;
-
-  // Create workflow mutation
-  const createWorkflow = hasConvex ? useMutation((api as any).workflows.create) : undefined;
-  
-  // Get or create workflow mutation
-  const getOrCreateWorkflow = hasConvex ? useMutation((api as any).workflows.getOrCreate) : undefined;
-  
-  // Update workflow mutation
-  const updateWorkflowMutation = hasConvex ? useMutation((api as any).workflows.update) : undefined;
+  // Always register hooks in a consistent order; use 'skip' when we have no id yet
+  const workflow = useQuery(api.workflows.get, workflowId ? { id: workflowId } : 'skip');
+  const getOrCreateWorkflow = useMutation(api.workflows.getOrCreate);
+  const updateWorkflowMutation = useMutation(api.workflows.update);
 
   // Update workflow function
   const updateWorkflow = async (args: { nodes?: Node[]; edges?: Edge[]; title?: string }) => {
-    if (!hasConvex) {
-      // No-op when Convex isn't initialized yet
-      return;
-    }
     let targetId = workflowId;
-    
+
     // If no workflow exists, create one first
-    if (!targetId && !workflow && getOrCreateWorkflow) {
+    if (!targetId && !workflow) {
       const newId = await getOrCreateWorkflow({
-        owner: 'demo-user', // TODO: Get from Clerk auth
+        // owner: user?.id || 'demo-user', // Backend now handles owner from auth context
         title: args.title || 'My First Flow',
       });
       targetId = newId;
+      
+      // If we were in demo-room, move to the new real ID
+      if (roomId === 'demo-room' && newId) {
+         router.push({ pathname: '/editor', query: { id: newId } }, undefined, { shallow: true });
+      }
     } else if (workflow?._id) {
       targetId = workflow._id;
     }
 
     if (!targetId) return;
 
-    await updateWorkflowMutation!({
+    await updateWorkflowMutation({
       id: targetId,
       ...args,
     });
   };
 
-  return { 
+  return {
     workflow: workflow || null,
     updateWorkflow,
   } as const;

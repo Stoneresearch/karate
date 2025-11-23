@@ -1,12 +1,14 @@
-"use client";
+'use client';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSlug from 'rehype-slug';
 import rehypeAutolinkHeadings from 'rehype-autolink-headings';
 import rehypeHighlight from 'rehype-highlight';
+import { SignedIn, SignedOut, UserButton } from '@clerk/nextjs';
+import HeaderShell from '../components/Layout/HeaderShell';
 import 'highlight.js/styles/github-dark.css';
 
 type DocsProps = {
@@ -14,21 +16,18 @@ type DocsProps = {
   contents: Record<string, string>;
 };
 
+// Safety net: strip any emoji/pictographic symbols from documentation content
+// so that docs render in a clean, neutral style even if authors add them.
+const stripEmojis = (value: string) =>
+  value.replace(/\p{Extended_Pictographic}/gu, '');
+
 export default function DocsPage({ files: initialFiles, contents }: DocsProps) {
-  const [files, setFiles] = useState<{ name: string; title: string }[]>(initialFiles || []);
+  const files = initialFiles || [];
   const [activeFile, setActiveFile] = useState<string | null>(initialFiles?.[0]?.name || null);
   const [content, setContent] = useState<string>(activeFile ? (contents[activeFile] || '') : '');
   const [loading, setLoading] = useState(false);
   // Default to full content for admin-oriented docs
   const [concise, setConcise] = useState(false);
-
-  useEffect(() => {
-    // keep state in sync if props change (unlikely)
-    if (!activeFile && initialFiles?.[0]) {
-      setActiveFile(initialFiles[0].name);
-      setContent(contents[initialFiles[0].name] || '');
-    }
-  }, [initialFiles, contents, activeFile]);
 
   const load = async (name: string) => {
     setLoading(true);
@@ -43,6 +42,7 @@ export default function DocsPage({ files: initialFiles, contents }: DocsProps) {
     const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-');
     const stripMd = (s: string) => s.replace(/[*_`~]/g, '').replace(/^\s+|\s+$/g, '');
     let sectionIndex = 0;
+    const seenIds = new Set<string>();
     lines.forEach((line) => {
       const match = /^(#{1,6})\s+(.*)/.exec(line.trim());
       if (match) {
@@ -56,6 +56,8 @@ export default function DocsPage({ files: initialFiles, contents }: DocsProps) {
         if (/^table of contents$/i.test(text)) return; // skip built-in ToC heading
         if (/^guide index$/i.test(text)) return;
         const id = slug(text);
+        if (seenIds.has(id)) return;
+        seenIds.add(id);
         let display = text;
         const numbered = /^(\d+(?:\.\d+)*[\.)]?\s+)/.test(display);
         const lettered = /^([A-Z][\.\)]\s+)/.test(display);
@@ -83,10 +85,11 @@ export default function DocsPage({ files: initialFiles, contents }: DocsProps) {
       return lines.join('\n');
     };
     const base = stripLeadingRules(stripTOCSection(content));
-    if (!concise) return base;
+    const noEmoji = stripEmojis(base);
+    if (!concise) return noEmoji;
     // Remove boilerplate-ish lines and headers that are too verbose
     const hide = [/^#+\s*(Changelog|License)/i, /^>\s*Note:/i, /^\s*-\s*\[[x\s]\]\s*/i];
-    return base
+    return noEmoji
       .split('\n')
       .filter((line) => !hide.some((re) => re.test(line)))
       .join('\n');
@@ -94,41 +97,73 @@ export default function DocsPage({ files: initialFiles, contents }: DocsProps) {
 
   return (
     <main className="min-h-screen bg-white text-zinc-900 dark:bg-black dark:text-white">
-      <motion.header
-        className="fixed top-0 left-0 right-0 z-50 bg-white/80 dark:bg-black/80 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800"
-        initial={{ y: -100 }}
-        animate={{ y: 0 }}
-      >
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="text-xl font-bold hover:opacity-80 transition">
-            KARATE AI Documentation
+      <HeaderShell
+        variant="app"
+        isScrolled={true}
+        leftContent={
+          <Link href="/" className="flex items-center gap-3 group">
+            <div className="h-8 w-8 rounded-md bg-[conic-gradient(from_180deg_at_50%_50%,#f97316_0deg,#22d3ee_120deg,#eab308_240deg,#f97316_360deg)] shadow-[0_0_22px_rgba(250,204,21,0.45)] group-hover:scale-105 transition-transform" />
+            <div className="flex flex-col leading-tight">
+              <span className="text-[11px] uppercase tracking-[0.22em] text-zinc-500">
+                Karate
+              </span>
+              <span className="text-sm font-semibold text-zinc-900 dark:text-white">
+                Documentation
+              </span>
+            </div>
           </Link>
-          <div className="flex gap-2 md:gap-4 items-center">
-            <Link href="/dashboard" className="px-4 py-2 bg-zinc-800 text-white font-bold rounded-md hover:bg-zinc-700 transition">
-              Dashboard
-            </Link>
-            <Link href="/editor" className="px-4 py-2 bg-yellow-400 text-black font-bold rounded-md hover:bg-yellow-300 transition">
-              Editor
-            </Link>
+        }
+        centerContent={
+          <div className="hidden md:flex items-center gap-3 text-xs text-zinc-500 dark:text-zinc-400">
+            <span className="px-3 py-1 rounded-full border border-zinc-200/80 dark:border-zinc-800/80 bg-white/40 dark:bg-zinc-900/50 tracking-[0.18em] uppercase">
+              Docs
+            </span>
+            <span className="hidden lg:inline text-zinc-400 dark:text-zinc-500">
+              Setup, editor, and integration guides for Karate Studio.
+            </span>
+          </div>
+        }
+        rightContent={
+          <div className="flex items-center gap-2 md:gap-3">
             <button
-              className={`px-3 py-2 text-sm rounded-md border ${concise ? 'bg-zinc-900 border-zinc-700 text-zinc-200' : 'bg-zinc-800 border-zinc-700 text-zinc-300'} hover:bg-zinc-700 transition`}
+              className={`hidden sm:inline-flex items-center rounded-full border px-3 py-1.5 text-[11px] font-medium tracking-tight transition-colors ${
+                concise
+                  ? 'bg-zinc-900 text-zinc-200 border-zinc-700'
+                  : 'bg-zinc-100 text-zinc-700 border-zinc-300 dark:bg-zinc-900/70 dark:text-zinc-200 dark:border-zinc-700'
+              }`}
               onClick={() => setConcise(!concise)}
               title="Toggle concise view"
             >
-              {concise ? 'Concise On' : 'Concise Off'}
+              {concise ? 'Concise view' : 'Full view'}
             </button>
+            <SignedOut>
+              <Link
+                href="/sign-in"
+                className="hidden md:inline-block text-xs px-3 py-1.5 rounded-full border border-zinc-300/70 text-zinc-600 hover:text-zinc-900 hover:border-zinc-500 dark:text-zinc-400 dark:border-zinc-700 dark:hover:border-zinc-500 transition-colors"
+              >
+                Sign in
+              </Link>
+            </SignedOut>
+            <SignedIn>
+              <UserButton
+                afterSignOutUrl="/"
+                appearance={{
+                  elements: {
+                    avatarBox:
+                      'w-8 h-8 rounded-full border border-zinc-200/70 dark:border-zinc-700 shadow-sm',
+                  },
+                }}
+              />
+            </SignedIn>
           </div>
-        </div>
-      </motion.header>
+        }
+        className="fixed top-0 left-0 right-0"
+      />
 
-      <div className="pt-24 pb-12">
+      <div className="pt-24 pb-14">
         <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="md:col-span-1 space-y-4 md:sticky md:top-24 md:self-start md:h-[calc(100vh-6rem)]">
-            <div className="p-4 bg-white border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 rounded-lg">
-              <h2 className="text-lg font-bold mb-3">Documentation</h2>
-              <p className="text-sm text-zinc-600 dark:text-zinc-400">Karate AI Developer documentation, including the full technical guide.</p>
-            </div>
-            <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden">
+            <div className="surface-panel overflow-hidden">
               <div className="p-3 border-b border-zinc-200 dark:border-zinc-800 text-sm text-zinc-600 dark:text-zinc-400">Files</div>
               <ul className="max-h-[60vh] overflow-y-auto">
                 {files.map((f) => (
@@ -144,11 +179,11 @@ export default function DocsPage({ files: initialFiles, contents }: DocsProps) {
               </ul>
             </div>
             {toc.length > 0 && (
-              <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden">
+              <div className="surface-soft overflow-hidden">
                 <div className="p-3 border-b border-zinc-200 dark:border-zinc-800 text-sm text-zinc-600 dark:text-zinc-400">On this page</div>
                 <ul className="max-h-[40vh] overflow-y-auto py-2">
-                  {toc.map((h, idx) => (
-                    <li key={idx} className="px-4 py-1">
+                  {toc.map((h) => (
+                    <li key={h.id} className="px-4 py-1">
                       <a
                         href={`#${h.id}`}
                         className="text-xs text-zinc-400 hover:text-yellow-300 transition"
@@ -161,10 +196,6 @@ export default function DocsPage({ files: initialFiles, contents }: DocsProps) {
                 </ul>
               </div>
             )}
-            <div className="flex gap-2 md:sticky md:bottom-4">
-              <Link href="/dashboard" className="flex-1 px-4 py-2 bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-white font-bold rounded-md hover:bg-zinc-200 dark:hover:bg-zinc-700 transition">Dashboard</Link>
-              <Link href="/editor" className="flex-1 px-4 py-2 bg-yellow-400 text-black font-bold rounded-md hover:bg-yellow-300 transition">Editor</Link>
-            </div>
           </div>
 
           <div className="md:col-span-2">
@@ -172,7 +203,7 @@ export default function DocsPage({ files: initialFiles, contents }: DocsProps) {
               key={activeFile}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-white border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 rounded-lg p-6 prose dark:prose-invert max-w-none prose-headings:scroll-mt-24"
+              className="surface-hero p-6 md:p-8 prose dark:prose-invert max-w-none prose-headings:scroll-mt-24"
             >
               {loading ? (
                 <div className="text-zinc-400">Loading…</div>
@@ -181,9 +212,9 @@ export default function DocsPage({ files: initialFiles, contents }: DocsProps) {
                   remarkPlugins={[remarkGfm]}
                   rehypePlugins={[rehypeSlug, [rehypeAutolinkHeadings, { behavior: 'append' }], rehypeHighlight]}
                   components={{
-                    h1: ({ node, ...props }) => <h1 id={String(props.children).toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-')} {...props} />,
-                    h2: ({ node, ...props }) => <h2 id={String(props.children).toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-')} {...props} />,
-                    h3: ({ node, ...props }) => <h3 id={String(props.children).toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-')} {...props} />,
+                    h1: ({ ...props }) => <h1 id={String(props.children).toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-')} {...props} />,
+                    h2: ({ ...props }) => <h2 id={String(props.children).toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-')} {...props} />,
+                    h3: ({ ...props }) => <h3 id={String(props.children).toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-')} {...props} />,
                     code: ({ className, children, ...props }: { className?: string; children?: React.ReactNode }) => (
                       <code className={`rounded px-1.5 py-0.5 bg-zinc-100 text-zinc-900 dark:bg-black/60 dark:text-zinc-100 ${className || ''}`} {...props}>{children}</code>
                     ),
@@ -278,41 +309,4 @@ export async function getStaticProps() {
   } catch {}
 
   return { props: { files, contents } };
-}
-
-function DocCard({ doc, isExpanded, onToggle }: { doc: { name: string; title: string; description: string }; isExpanded: boolean; onToggle: () => void }) {
-  return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-      <button
-        onClick={onToggle}
-        className="w-full p-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg hover:border-yellow-400/50 transition-all text-left flex items-center justify-between group"
-      >
-        <div>
-          <h3 className="font-bold text-zinc-900 dark:text-white group-hover:text-yellow-400 transition">{doc.title}</h3>
-          <p className="text-sm text-zinc-600 dark:text-zinc-500">{doc.description}</p>
-        </div>
-        <span className={`text-2xl transition-transform ${isExpanded ? 'rotate-180' : ''} text-zinc-500 group-hover:text-yellow-400`}>▼</span>
-      </button>
-
-      <AnimatePresence>
-        {isExpanded && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="mt-2 p-4 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-800 rounded-lg"
-          >
-            <a
-              href={`/docs/${doc.name}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block px-4 py-2 bg-yellow-400 text-black font-bold rounded hover:bg-yellow-300 transition"
-            >
-              Open File →
-            </a>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.div>
-  );
 }

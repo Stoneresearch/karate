@@ -1,6 +1,5 @@
 import { mutation } from './_generated/server';
 import { v } from 'convex/values';
-import type { Id } from './_generated/dataModel';
 
 // Helper to enqueue common marketing jobs
 export const scheduleCampaign = mutation({

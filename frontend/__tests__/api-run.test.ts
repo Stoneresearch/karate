@@ -10,14 +10,32 @@ vi.mock('@clerk/nextjs/server', () => ({
 // Avoid constructing a real Convex client during tests
 vi.mock('convex/browser', () => ({
   ConvexHttpClient: vi.fn().mockImplementation(() => ({
-    mutation: vi.fn().mockResolvedValue({ _id: 'run_123' }),
+    mutation: vi.fn().mockImplementation((apiFunc, args) => {
+        // Mock success for create run
+        if (apiFunc === 'api.runs.create' || String(apiFunc).includes('create')) {
+            return Promise.resolve('run_123'); 
+        }
+        // Mock success for user
+        if (apiFunc === 'api.users.getOrCreate' || String(apiFunc).includes('getOrCreate')) {
+             return Promise.resolve({ _id: 'user_convex_123', credits: 100 });
+        }
+        // Mock update status
+        if (apiFunc === 'api.runs.updateStatus' || String(apiFunc).includes('updateStatus')) {
+            return Promise.resolve({});
+        }
+        return Promise.resolve({});
+    }),
   })),
 }));
 
 // Use a minimal api proxy so run handler import of api works
 vi.mock('../lib/convex/api', async () => {
-  const mod = await vi.importActual<any>('../lib/convex/api');
-  return mod;
+  return {
+    api: {
+      runs: { create: 'api.runs.create', updateStatus: 'api.runs.updateStatus' },
+      users: { getOrCreate: 'api.users.getOrCreate' }
+    }
+  };
 });
 
 describe('/api/run handler', () => {
@@ -26,10 +44,12 @@ describe('/api/run handler', () => {
   beforeEach(() => {
     vi.useRealTimers();
     process.env = { ...originalEnv };
-    // Default: no Convex URL so Convex client is not created
-    delete process.env.NEXT_PUBLIC_CONVEX_URL;
+    // Force Convex URL to ensure the Convex branch is taken in the handler
+    process.env.NEXT_PUBLIC_CONVEX_URL = 'http://localhost:3210'; 
+    
     // Mock global fetch
     global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
       status: 200,
       json: async () => ({ url: 'https://example.com/output.png' }),
     } as any);
@@ -72,5 +92,3 @@ describe('/api/run handler', () => {
     expect(res.statusCode).toBe(401);
   });
 });
-
-

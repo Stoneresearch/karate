@@ -14,7 +14,13 @@ export default function Page() {
   }
   return (
     <div className="min-h-screen flex items-center justify-center py-16">
-      <SignIn routing="path" path="/sign-in" signUpUrl="/sign-up" />
+      <SignIn
+        routing="path"
+        path="/sign-in"
+        signUpUrl="/sign-up"
+        afterSignInUrl="/dashboard"
+        afterSignUpUrl="/dashboard"
+      />
     </div>
   );
 }

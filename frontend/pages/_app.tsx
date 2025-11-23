@@ -6,6 +6,7 @@ import { ThemeProvider, useTheme } from 'next-themes';
 import { Inter, Space_Grotesk } from 'next/font/google';
 import Head from 'next/head';
 import { useEffect, useState } from 'react';
+import { UserSync } from '../components/Auth/UserSync';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
 const grotesk = Space_Grotesk({ subsets: ['latin'], variable: '--font-display' });
@@ -48,34 +49,46 @@ export default function App({ Component, pageProps }: AppProps) {
 
   const pk = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || process.env.CLERK_PUBLISHABLE_KEY;
   const isValidPk = typeof pk === 'string' && pk.startsWith('pk_') && pk.length > 16;
-  const AppShell = (
-    <ConvexProviderRoot>
-      <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
-        <div className={`${inter.variable} ${grotesk.variable} min-h-screen font-sans`}>
-          <Head>
-            <title>Karate AI – Design Studio</title>
-            <meta name="viewport" content="width=device-width, initial-scale=1" />
-            <meta name="theme-color" content="#000000" />
-            <meta name="description" content="Karate AI – Design Studio. Create advanced visual workflows with models and tools in one node-based studio." />
-            <meta property="og:title" content="Karate AI – Design Studio" />
-            <meta property="og:description" content="Create advanced visual workflows with models and tools in one node-based studio." />
-            <meta property="og:type" content="website" />
-          </Head>
-          <ThemeToggle />
-          <Component {...pageProps} />
-        </div>
-      </ThemeProvider>
-    </ConvexProviderRoot>
-  );
+  
   if (!isValidPk) {
     if (typeof console !== 'undefined') console.warn('Clerk publishable key missing/invalid; running without auth. Set NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY.');
-    return AppShell;
+    // Fallback provider without Clerk if no key
+    return (
+         <ConvexProviderRoot>
+            <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+                <div className={`${inter.variable} ${grotesk.variable} min-h-screen font-sans`}>
+                  <Head>
+                    <title>Karate AI – Design Studio</title>
+                    <meta name="viewport" content="width=device-width, initial-scale=1" />
+                  </Head>
+                  <Component {...pageProps} />
+                </div>
+            </ThemeProvider>
+         </ConvexProviderRoot>
+    );
   }
+  
+  // Correct Nesting: ClerkProvider -> ConvexProviderWithClerk (inside ConvexProviderRoot) -> App
   return (
     <ClerkProvider publishableKey={pk}>
-      {AppShell}
+        <ConvexProviderRoot>
+            <UserSync /> {/* Automatically sync user on every page load */}
+            <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+                <div className={`${inter.variable} ${grotesk.variable} min-h-screen font-sans`}>
+                <Head>
+                    <title>Karate AI – Design Studio</title>
+                    <meta name="viewport" content="width=device-width, initial-scale=1" />
+                    <meta name="theme-color" content="#000000" />
+                    <meta name="description" content="Karate AI – Design Studio. Create advanced visual workflows with models and tools in one node-based studio." />
+                    <meta property="og:title" content="Karate AI – Design Studio" />
+                    <meta property="og:description" content="Create advanced visual workflows with models and tools in one node-based studio." />
+                    <meta property="og:type" content="website" />
+                </Head>
+                <ThemeToggle />
+                <Component {...pageProps} />
+                </div>
+            </ThemeProvider>
+        </ConvexProviderRoot>
     </ClerkProvider>
   );
 }
-
-

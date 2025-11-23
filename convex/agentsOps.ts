@@ -1,6 +1,5 @@
 import { query, mutation } from './_generated/server';
 import { v } from 'convex/values';
-import type { Id } from './_generated/dataModel';
 
 export const enqueue = mutation({
   args: { type: v.string(), payload: v.any(), priority: v.optional(v.number()) },
@@ -27,7 +26,10 @@ export const claimNext = mutation({
       candidates = candidates.filter((j) => j.type === args.type);
     }
     
-    candidates.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0) || a.createdAt - b.createdAt);
+    candidates.sort(
+      (a, b) =>
+        (b.priority ?? 0) - (a.priority ?? 0) || a.createdAt - b.createdAt
+    );
     const job = candidates[0];
     if (!job) return null;
     

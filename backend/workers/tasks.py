@@ -1,10 +1,17 @@
 import os
+import uuid
+import logging
 import asyncio
-from typing import TypedDict, Optional, Any, List
+import json
+from typing import TypedDict, Optional, Any, List, Dict
 import httpx
+from backend.core.redis import get_redis_client
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 try:
-  # replicate and openai are optional at dev time; handle gracefully if missing
   import replicate  # type: ignore
 except Exception:
   replicate = None  # type: ignore
@@ -20,6 +27,8 @@ class RunResult(TypedDict):
   prompt: str
   user_id: str
   output_url: Optional[str]
+  status: str # "processing", "completed" or "failed"
+  error: Optional[str]
 
 
 def _first_url_from(obj: Any) -> Optional[str]:
@@ -35,7 +44,6 @@ def _first_url_from(obj: Any) -> Optional[str]:
         return url
     return None
   if isinstance(obj, dict):
-    # common keys
     for k in ["url", "image", "output", "src"]:
       v = obj.get(k)
       if isinstance(v, str) and v.startswith("http"):
@@ -48,23 +56,39 @@ def _first_url_from(obj: Any) -> Optional[str]:
   return None
 
 
-def _run_replicate_sdxl_sync(prompt: str) -> Optional[str]:
+def _run_replicate_sdxl_sync(prompt: str, **kwargs) -> Optional[str]:
   api_token = os.getenv("REPLICATE_API_TOKEN")
   if not api_token or replicate is None:
+    logger.error("Replicate API token missing or library not installed")
     return None
-  # Example SDXL model/version from docs; replace with a preferred version as needed
   model_version = "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c71dcde277882d13b833d5c75deae501615"
+  
+  input_payload = {"prompt": prompt}
+  
+  if "aspect_ratio" in kwargs:
+      input_payload["aspect_ratio"] = kwargs["aspect_ratio"]
+      
+  if "guidance_scale" in kwargs:
+      input_payload["guidance_scale"] = kwargs["guidance_scale"]
+      
+  if "seed" in kwargs:
+      input_payload["seed"] = kwargs["seed"]
+
+  if "safety_tolerance" in kwargs:
+      input_payload["safety_tolerance"] = kwargs["safety_tolerance"]
+
   try:
-    # replicate.run returns a list of URLs or a single URL
-    output: Any = replicate.run(model_version, input={"prompt": prompt})  # type: ignore
+    output: Any = replicate.run(model_version, input=input_payload)  # type: ignore
     return _first_url_from(output)
-  except Exception:
+  except Exception as e:
+    logger.exception(f"Replicate SDXL error: {e}")
     return None
 
 
 def _run_openai_image_sync(model_name: str, prompt: str) -> Optional[str]:
   api_key = os.getenv("OPENAI_API_KEY")
   if not api_key or OpenAI is None:
+    logger.error("OpenAI API key missing or library not installed")
     return None
   try:
     client = OpenAI(api_key=api_key)  # type: ignore
@@ -73,20 +97,16 @@ def _run_openai_image_sync(model_name: str, prompt: str) -> Optional[str]:
     if data and isinstance(data, list):
       return _first_url_from(data[0])
     return None
-  except Exception:
+  except Exception as e:
+    logger.exception(f"OpenAI Image error ({model_name}): {e}")
     return None
 
 
 def _run_generic_http_sync(model_key: str, prompt: str) -> Optional[str]:
-  """Call a configurable HTTP endpoint for a model.
-  Expects env vars:
-    HTTP_MODEL_{MODEL_KEY}_URL  (e.g., HTTP_MODEL_RUNWAY_GEN_4_URL)
-    HTTP_MODEL_{MODEL_KEY}_AUTH (optional header value, e.g., "Bearer sk-...")
-  Sends JSON: {"prompt": prompt}. Expects JSON response with a URL somewhere.
-  """
   key = model_key.upper().replace("-", "_")
   url = os.getenv(f"HTTP_MODEL_{key}_URL")
   if not url:
+    logger.warning(f"No HTTP URL configured for model {model_key} (HTTP_MODEL_{key}_URL)")
     return None
   headers = {"Content-Type": "application/json"}
   auth = os.getenv(f"HTTP_MODEL_{key}_AUTH")
@@ -95,68 +115,137 @@ def _run_generic_http_sync(model_key: str, prompt: str) -> Optional[str]:
   try:
     with httpx.Client(timeout=60) as client:
       resp = client.post(url, json={"prompt": prompt}, headers=headers)
+      resp.raise_for_status()
       data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else None
       return _first_url_from(data)
-  except Exception:
+  except Exception as e:
+    logger.exception(f"Generic HTTP error for {model_key}: {e}")
     return None
 
 
-async def run_ai_model(model: str, prompt: str, user_id: str) -> RunResult:
-  output_url: Optional[str] = None
+# Redis Client
+redis_client = get_redis_client()
+# Fallback in-memory store if Redis is not available
+_memory_tasks: Dict[str, RunResult] = {}
 
-  if model == "stable-diffusion-3.5":
-    # Use Replicate SDXL as the stand-in for SD 3.5 (can be swapped later)
-    output_url = await asyncio.to_thread(_run_replicate_sdxl_sync, prompt)
-  elif model == "dalle-3":
-    output_url = await asyncio.to_thread(_run_openai_image_sync, "dall-e-3", prompt)
-  elif model == "gpt-image-1":
-    output_url = await asyncio.to_thread(_run_openai_image_sync, "gpt-image-1", prompt)
-  elif model in {"flux-pro-1.1", "ideogram-v3", "minimax-image-01", "recraft-v3-svg", "esrgan", "imagen-4", "imagen-4-fast", "imagen-4-ultra", "imagen-3", "imagen-3-fast", "google-upscaler"}:
-    # Generic Replicate path driven by env slugs. Configure env vars:
-    #   REPLICATE_FLUX_PRO_1_1, REPLICATE_IDEOGRAM_V3, REPLICATE_MINIMAX_IMAGE_01,
-    #   REPLICATE_RECRAFT_V3_SVG, REPLICATE_ESRGAN
-    slug_map = {
-      "flux-pro-1.1": os.getenv("REPLICATE_FLUX_PRO_1_1"),
-      "ideogram-v3": os.getenv("REPLICATE_IDEOGRAM_V3"),
-      "minimax-image-01": os.getenv("REPLICATE_MINIMAX_IMAGE_01"),
-      "recraft-v3-svg": os.getenv("REPLICATE_RECRAFT_V3_SVG"),
-      "esrgan": os.getenv("REPLICATE_ESRGAN"),
-      # Google Imagen & Upscaler families via Replicate
-      "imagen-4": os.getenv("REPLICATE_IMAGEN_4"),
-      "imagen-4-fast": os.getenv("REPLICATE_IMAGEN_4_FAST"),
-      "imagen-4-ultra": os.getenv("REPLICATE_IMAGEN_4_ULTRA"),
-      "imagen-3": os.getenv("REPLICATE_IMAGEN_3"),
-      "imagen-3-fast": os.getenv("REPLICATE_IMAGEN_3_FAST"),
-      "google-upscaler": os.getenv("REPLICATE_GOOGLE_UPSCALER"),
-    }
-    slug = slug_map.get(model)
-    if slug and replicate is not None and os.getenv("REPLICATE_API_TOKEN"):
-      def _run_generic(prompt_text: str) -> Optional[str]:
+def _save_task(task_id: str, data: RunResult):
+    if redis_client:
         try:
-          output: Any = replicate.run(slug, input={"prompt": prompt_text})  # type: ignore
-          return _first_url_from(output)
-        except Exception:
-          return None
-      output_url = await asyncio.to_thread(_run_generic, prompt)
+            redis_client.setex(f"task:{task_id}", 3600, json.dumps(data)) # 1 hour TTL
+        except Exception as e:
+            logger.error(f"Redis set error: {e}")
+            _memory_tasks[task_id] = data
     else:
-      output_url = None
-  elif model in {
-    # Extended set routed by generic HTTP endpoints; configure per-model URLs in env
-    "flux-dev-redux", "flux-canny-pro", "flux-depth-pro",
-    "ideogram-v2", "bria", "remove-background", "content-aware-fill",
-    "bria-remove-bg", "bria-content-fill", "replace-background", "bria-replace-background",
-    "relight-2", "kolors-virtual-try-on", "topaz-video-upscaler", "bria-upscale",
-    "runway-aleph", "runway-act-two", "runway-gen-4", "runway-gen-3",
-    "luma-reframe", "luma-modify", "veo-text-to-video", "veo-image-to-video",
-    "sora-2", "hunyuan-video-to-video", "omnihuman-v1-5", "sync-2-pro",
-    "pixverse-lipsync", "kling-ai-avatar", "rodin", "hunyuan-3d", "trellis-3d", "meshy-3d",
-    "wan-vace-depth", "wan-vace-pose", "wan-vace-reframe", "wan-vace-outpaint",
-    "wan-2-5", "wan-2-2", "wan-2-1-lora",
-  }:
-    output_url = await asyncio.to_thread(_run_generic_http_sync, model, prompt)
-  else:
-    # Fallback: attempt generic HTTP runner if configured
-    output_url = await asyncio.to_thread(_run_generic_http_sync, model, prompt)
+        _memory_tasks[task_id] = data
 
-  return {"model": model, "prompt": prompt, "user_id": user_id, "output_url": output_url}
+def _get_task(task_id: str) -> Optional[RunResult]:
+    if redis_client:
+        try:
+            data = redis_client.get(f"task:{task_id}")
+            if data:
+                return json.loads(data)
+        except Exception as e:
+            logger.error(f"Redis get error: {e}")
+    return _memory_tasks.get(task_id)
 
+
+async def run_ai_model_background(model: str, prompt: str, user_id: str, **kwargs) -> str:
+    """Starts an AI task in the background and returns a task ID."""
+    task_id = str(uuid.uuid4())
+    initial_state: RunResult = {
+        "model": model,
+        "prompt": prompt,
+        "user_id": user_id,
+        "output_url": None,
+        "status": "processing",
+        "error": None
+    }
+    _save_task(task_id, initial_state)
+    
+    asyncio.create_task(_process_ai_task(task_id, model, prompt, user_id, **kwargs))
+    return task_id
+
+async def _process_ai_task(task_id: str, model: str, prompt: str, user_id: str, **kwargs):
+    """Internal background processor."""
+    output_url: Optional[str] = None
+    error_msg: Optional[str] = None
+    
+    try:
+        if model == "stable-diffusion-3.5":
+            output_url = await asyncio.to_thread(_run_replicate_sdxl_sync, prompt, **kwargs)
+        elif model == "dalle-3":
+            output_url = await asyncio.to_thread(_run_openai_image_sync, "dall-e-3", prompt)
+        elif model == "gpt-image-1":
+            output_url = await asyncio.to_thread(_run_openai_image_sync, "gpt-image-1", prompt)
+        elif model in {"flux-pro-1.1-ultra", "flux-pro-1.1", "ideogram-v3", "minimax-image-01", "recraft-v3-svg", "esrgan", "imagen-4", "imagen-4-fast", "imagen-4-ultra", "imagen-3", "imagen-3-fast", "google-upscaler"}:
+            slug_map = {
+              "flux-pro-1.1-ultra": os.getenv("REPLICATE_FLUX_PRO_1_1_ULTRA", "black-forest-labs/flux-1.1-pro-ultra"),
+              "flux-pro-1.1": os.getenv("REPLICATE_FLUX_PRO_1_1", "black-forest-labs/flux-1.1-pro"),
+              "ideogram-v3": os.getenv("REPLICATE_IDEOGRAM_V3", "ideogram-ai/ideogram-v3"),
+              "minimax-image-01": os.getenv("REPLICATE_MINIMAX_IMAGE_01"),
+              "recraft-v3-svg": os.getenv("REPLICATE_RECRAFT_V3_SVG"),
+              "esrgan": os.getenv("REPLICATE_ESRGAN"),
+              "imagen-4": os.getenv("REPLICATE_IMAGEN_4"),
+              "imagen-4-fast": os.getenv("REPLICATE_IMAGEN_4_FAST"),
+              "imagen-4-ultra": os.getenv("REPLICATE_IMAGEN_4_ULTRA"),
+              "imagen-3": os.getenv("REPLICATE_IMAGEN_3"),
+              "imagen-3-fast": os.getenv("REPLICATE_IMAGEN_3_FAST"),
+              "google-upscaler": os.getenv("REPLICATE_GOOGLE_UPSCALER"),
+            }
+            slug = slug_map.get(model)
+            if slug and replicate is not None and os.getenv("REPLICATE_API_TOKEN"):
+                def _run_generic(prompt_text: str) -> Optional[str]:
+                    try:
+                        output: Any = replicate.run(slug, input={"prompt": prompt_text})
+                        return _first_url_from(output)
+                    except Exception as e:
+                        logger.exception(f"Replicate generic error ({slug}): {e}")
+                        return None
+                output_url = await asyncio.to_thread(_run_generic, prompt)
+            else:
+                logger.warning(f"Missing configuration for Replicate model: {model}")
+                error_msg = f"Missing configuration for model: {model}"
+                output_url = None
+        else:
+            output_url = await asyncio.to_thread(_run_generic_http_sync, model, prompt)
+        
+        current_state = _get_task(task_id)
+        if not current_state:
+             # Should not happen, but robust check
+             current_state = {
+                "model": model, "prompt": prompt, "user_id": user_id, 
+                "output_url": None, "status": "processing", "error": None
+             }
+
+        if output_url:
+            current_state["output_url"] = output_url
+            current_state["status"] = "completed"
+        else:
+            current_state["status"] = "failed"
+            current_state["error"] = error_msg or "No output URL generated"
+            
+        _save_task(task_id, current_state)
+            
+    except Exception as e:
+        logger.exception(f"Task {task_id} failed: {e}")
+        current_state = _get_task(task_id) or {
+            "model": model, "prompt": prompt, "user_id": user_id, 
+            "output_url": None, "status": "processing", "error": None
+        }
+        current_state["status"] = "failed"
+        current_state["error"] = str(e)
+        _save_task(task_id, current_state)
+
+def get_task_status(task_id: str) -> Optional[RunResult]:
+    return _get_task(task_id)
+
+async def run_ai_model(model: str, prompt: str, user_id: str) -> RunResult:
+    """Legacy sync-wrapper (deprecated)."""
+    task_id = await run_ai_model_background(model, prompt, user_id)
+    # Polling wait for legacy calls
+    for _ in range(20): # Wait up to 10s
+        status = get_task_status(task_id)
+        if status and status["status"] in ["completed", "failed"]:
+             return status
+        await asyncio.sleep(0.5)
+    return get_task_status(task_id) or {"model": model, "prompt": prompt, "user_id": user_id, "output_url": None, "status": "processing", "error": "Timeout"}

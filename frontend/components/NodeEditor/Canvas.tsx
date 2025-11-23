@@ -1,5 +1,6 @@
 "use client";
-import { useCallback, useState, useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useState, useEffect, useRef, useMemo, type Dispatch, type SetStateAction } from 'react';
+import { useUser } from '@clerk/nextjs';
 import {
   ReactFlow,
   Controls,
@@ -16,22 +17,24 @@ import {
 import type { NodeChange, EdgeChange, NodeTypes } from '@xyflow/react';
 import type { PaletteItem, ContextMenuState } from './types';
 import '@xyflow/react/dist/style.css';
+import { MODELS, TOOLS } from '../../lib/models';
 import { useWorkflow } from '../Realtime/Collaboration';
 import Sidebar from './Sidebar';
+import EditorHeader from './EditorHeader';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/router';
 import { useTheme } from 'next-themes';
-import { Button, Tooltip } from '@mui/material';
-import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/nextjs';
-const pk = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || process.env.CLERK_PUBLISHABLE_KEY;
-const CLERK_ENABLED = typeof pk === 'string' && pk.startsWith('pk_') && pk.length > 16;
-import UndoIcon from '@mui/icons-material/Undo';
-import RedoIcon from '@mui/icons-material/Redo';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
-import ShareIcon from '@mui/icons-material/Share';
+import Image from 'next/image';
+import PhotoIcon from '@mui/icons-material/Photo';
+import MovieIcon from '@mui/icons-material/Movie';
+import AudiotrackIcon from '@mui/icons-material/Audiotrack';
 import ViewInArIcon from '@mui/icons-material/ViewInAr';
 import HandymanIcon from '@mui/icons-material/Handyman';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
+import BrushIcon from '@mui/icons-material/Brush';
+import SettingsIcon from '@mui/icons-material/Settings';
+import CreditCardIcon from '@mui/icons-material/CreditCard';
+import SettingsPanel from './SettingsPanel';
 import {
   StableDiffusionNode,
   ImageNode,
@@ -54,123 +57,50 @@ const nodeTypes: Record<string, unknown> = {
 
 const initialNodes: Node[] = [];
 const initialEdges: Edge[] = [];
-type OutputItem = { url: string; model: string; prompt: string; ts: number };
+type OutputItem = { url: string; model: string; prompt: string; ts: number; error?: string };
 
 type CanvasProps = { roomId: string };
 
 export default function Canvas({ roomId }: CanvasProps) {
-  const router = useRouter();
+  const router = useRouter(); // currently used only for future deep-linking; kept for expansion
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string>('');
   const [scrollToCategory, setScrollToCategory] = useState<string | undefined>(undefined);
   const [focusSearchSignal, setFocusSearchSignal] = useState<number>(0);
-  const [sidebarTab, setSidebarTab] = useState<'models' | 'tools'>('models');
-  const [railManualKey, setRailManualKey] = useState<string | undefined>(undefined);
+  const [sidebarTab] = useState<'models' | 'tools'>('models');
   const [outputPanelOpen, setOutputPanelOpen] = useState<boolean>(false);
   const [outputs, setOutputs] = useState<OutputItem[]>([]);
 
   // Models and tools data
-  const models: PaletteItem[] = [
-    { name: 'Stable Diffusion 3.5', type: 'stableDiffusion', icon: '🎨', symbol: 'SD', category: 'Image Gen', brand: 'Stability', logo: 'https://logo.clearbit.com/stability.ai' },
-    { name: 'GPT Image 1', type: 'stableDiffusion', icon: '🧠', symbol: 'GPT', category: 'Image Gen', brand: 'OpenAI', logo: 'https://logo.clearbit.com/openai.com' },
-    { name: 'Imagen 4', type: 'stableDiffusion', icon: '🅶', symbol: 'G', category: 'Image Gen', brand: 'Google', logo: 'https://logo.clearbit.com/google.com' },
-    { name: 'Imagen 4 Fast', type: 'stableDiffusion', icon: '🅶', symbol: 'G', category: 'Image Gen', brand: 'Google', logo: 'https://logo.clearbit.com/google.com' },
-    { name: 'Imagen 4 Ultra', type: 'stableDiffusion', icon: '🅶', symbol: 'G', category: 'Image Gen', brand: 'Google', logo: 'https://logo.clearbit.com/google.com' },
-    { name: 'Imagen 3', type: 'stableDiffusion', icon: '🅶', symbol: 'G', category: 'Image Gen', brand: 'Google', logo: 'https://logo.clearbit.com/google.com' },
-    { name: 'Imagen 3 Fast', type: 'stableDiffusion', icon: '🅶', symbol: 'G', category: 'Image Gen', brand: 'Google', logo: 'https://logo.clearbit.com/google.com' },
-    { name: 'Flux Pro 1.1 Ultra', type: 'stableDiffusion', icon: '⚡', symbol: 'FX', category: 'Image Gen', brand: 'Flux', logo: 'https://logo.clearbit.com/blackforestlabs.ai' },
-    { name: 'Flux Dev Redux', type: 'stableDiffusion', icon: '⚡', symbol: 'FX', category: 'Image Gen', brand: 'Flux', logo: 'https://logo.clearbit.com/blackforestlabs.ai' },
-    { name: 'Flux Canny Pro', type: 'stableDiffusion', icon: '⚡', symbol: 'FX', category: 'Image Gen', brand: 'Flux', logo: 'https://logo.clearbit.com/blackforestlabs.ai' },
-    { name: 'Flux Depth Pro', type: 'stableDiffusion', icon: '⚡', symbol: 'FX', category: 'Image Gen', brand: 'Flux', logo: 'https://logo.clearbit.com/blackforestlabs.ai' },
-    { name: 'DALL·E 3', type: 'stableDiffusion', icon: '🎨', symbol: 'DAL', category: 'Image Gen', brand: 'OpenAI', logo: 'https://logo.clearbit.com/openai.com' },
-    { name: 'Ideogram V3', type: 'stableDiffusion', icon: '📝', symbol: 'ID3', category: 'Image Gen', brand: 'Ideogram', logo: 'https://logo.clearbit.com/ideogram.ai' },
-    { name: 'Ideogram V2', type: 'stableDiffusion', icon: '📝', symbol: 'ID2', category: 'Image Gen', brand: 'Ideogram', logo: 'https://logo.clearbit.com/ideogram.ai' },
-    { name: 'Minimax Image', type: 'stableDiffusion', icon: '🎵', symbol: 'MX', category: 'Image Gen', brand: 'Minimax' },
-    { name: 'Bria', type: 'stableDiffusion', icon: '🎪', symbol: 'BR', category: 'Image Gen', brand: 'Bria', logo: 'https://logo.clearbit.com/bria.ai' },
-    { name: 'SD3 Remove Background', type: 'image', icon: '🎭', symbol: 'SD', category: 'Image Enhance', brand: 'Stability', logo: 'https://logo.clearbit.com/stability.ai' },
-    { name: 'SD3 Content-Aware Fill', type: 'image', icon: '🎨', symbol: 'SD', category: 'Image Enhance', brand: 'Stability', logo: 'https://logo.clearbit.com/stability.ai' },
-    { name: 'Bria Remove Background', type: 'image', icon: '🎭', symbol: 'BR', category: 'Image Enhance', brand: 'Bria', logo: 'https://logo.clearbit.com/bria.ai' },
-    { name: 'Bria Content-Aware Fill', type: 'image', icon: '🎨', symbol: 'BR', category: 'Image Enhance', brand: 'Bria', logo: 'https://logo.clearbit.com/bria.ai' },
-    { name: 'Replace Background', type: 'image', icon: '🌅', symbol: 'BR', category: 'Image Enhance', brand: 'Bria', logo: 'https://logo.clearbit.com/bria.ai' },
-    { name: 'Bria Replace Background', type: 'image', icon: '🌅', symbol: 'BR', category: 'Image Enhance', brand: 'Bria', logo: 'https://logo.clearbit.com/bria.ai' },
-    { name: 'Relight 2.0', type: 'image', icon: '💡', symbol: 'RL', category: 'Image Enhance', brand: 'Bria', logo: 'https://logo.clearbit.com/bria.ai' },
-    { name: 'Kolors Virtual Try On', type: 'image', icon: '👗', symbol: 'KL', category: 'Image Enhance', brand: 'Kolors' },
-    { name: 'Image Upscale / Clarity', type: 'upscale', icon: '🔍', symbol: 'UP', category: 'Upscale', brand: 'Clarity' },
-    { name: 'Topaz Video Upscaler', type: 'upscale', icon: '📺', symbol: 'TZ', category: 'Upscale', brand: 'Topaz', logo: 'https://logo.clearbit.com/topazlabs.com' },
-    { name: 'Real-ESRGAN Video Upscaler', type: 'upscale', icon: '🎬', symbol: 'RES', category: 'Upscale', brand: 'ESRGAN' },
-    { name: 'Bria Upscale', type: 'upscale', icon: '📈', symbol: 'BR', category: 'Upscale', brand: 'Bria', logo: 'https://logo.clearbit.com/bria.ai' },
-    { name: 'Image Upscale / Real-ESRGAN', type: 'upscale', icon: '🔍', symbol: 'RES', category: 'Upscale', brand: 'ESRGAN' },
-    { name: 'Runway Aleph', type: 'stableDiffusion', icon: '🎬', symbol: 'RW', category: 'Video Gen', brand: 'Runway', logo: 'https://logo.clearbit.com/runwayml.com' },
-    { name: 'Runway Act-Two', type: 'stableDiffusion', icon: '🎬', symbol: 'RW', category: 'Video Gen', brand: 'Runway', logo: 'https://logo.clearbit.com/runwayml.com' },
-    { name: 'Runway Gen-4', type: 'stableDiffusion', icon: '🎬', symbol: 'RW', category: 'Video Gen', brand: 'Runway', logo: 'https://logo.clearbit.com/runwayml.com' },
-    { name: 'Runway Gen-3', type: 'stableDiffusion', icon: '🎬', symbol: 'RW', category: 'Video Gen', brand: 'Runway', logo: 'https://logo.clearbit.com/runwayml.com' },
-    { name: 'Luma Reframe', type: 'stableDiffusion', icon: '🎞️', symbol: 'LU', category: 'Video Gen', brand: 'Luma', logo: 'https://logo.clearbit.com/luma.ai' },
-    { name: 'Luma Modify', type: 'stableDiffusion', icon: '🎞️', symbol: 'LU', category: 'Video Gen', brand: 'Luma', logo: 'https://logo.clearbit.com/luma.ai' },
-    { name: 'Veo 3', type: 'stableDiffusion', icon: '🎬', symbol: 'VEO', category: 'Video Gen', brand: 'Google', logo: 'https://logo.clearbit.com/google.com' },
-    { name: 'Veo 3 Fast', type: 'stableDiffusion', icon: '🎬', symbol: 'VEO', category: 'Video Gen', brand: 'Google', logo: 'https://logo.clearbit.com/google.com' },
-    { name: 'Veo 3.1', type: 'stableDiffusion', icon: '🎬', symbol: 'VEO', category: 'Video Gen', brand: 'Google', logo: 'https://logo.clearbit.com/google.com' },
-    { name: 'Veo 3.1 Fast', type: 'stableDiffusion', icon: '🎬', symbol: 'VEO', category: 'Video Gen', brand: 'Google', logo: 'https://logo.clearbit.com/google.com' },
-    { name: 'Veo 2', type: 'stableDiffusion', icon: '🎬', symbol: 'VEO', category: 'Video Gen', brand: 'Google', logo: 'https://logo.clearbit.com/google.com' },
-    { name: 'Veo Text to Video', type: 'stableDiffusion', icon: '📝', symbol: 'VEO', category: 'Video Gen', brand: 'Google', logo: 'https://logo.clearbit.com/google.com' },
-    { name: 'Veo Image to Video', type: 'stableDiffusion', icon: '🖼️', symbol: 'VEO', category: 'Video Gen', brand: 'Google', logo: 'https://logo.clearbit.com/google.com' },
-    { name: 'Sora 2', type: 'stableDiffusion', icon: '🎥', symbol: 'SR', category: 'Video Gen', brand: 'OpenAI', logo: 'https://logo.clearbit.com/openai.com' },
-    { name: 'Hunyuan Video to Video', type: 'stableDiffusion', icon: '🎥', symbol: 'HY', category: 'Video Gen', brand: 'Hunyuan', logo: 'https://logo.clearbit.com/tencent.com' },
-    { name: 'Gemini 2.5 Flash Image', type: 'stableDiffusion', icon: '🅶', symbol: 'G', category: 'Image Gen', brand: 'Google', logo: 'https://logo.clearbit.com/google.com' },
-    { name: 'Gemini 2.5 Flash', type: 'stableDiffusion', icon: '🅶', symbol: 'G', category: 'Advanced', brand: 'Google', logo: 'https://logo.clearbit.com/google.com' },
-    { name: 'Lyria 2', type: 'stableDiffusion', icon: '🎵', symbol: 'LY', category: 'Advanced', brand: 'Google', logo: 'https://logo.clearbit.com/google.com' },
-    { name: 'Google Upscaler', type: 'upscale', icon: '🔍', symbol: 'UP', category: 'Upscale', brand: 'Google', logo: 'https://logo.clearbit.com/google.com' },
-    { name: 'Video Smoother', type: 'image', icon: '✨', symbol: 'VS', category: 'Video Enhance', brand: 'AI' },
-    { name: 'Increase Frame-rate', type: 'image', icon: '⚡', symbol: 'FR', category: 'Video Enhance', brand: 'AI' },
-    { name: 'Video to Audio', type: 'image', icon: '🎵', symbol: 'V2A', category: 'Video Enhance', brand: 'AI' },
-    { name: 'Seedream V4 Edit', type: 'image', icon: '🎬', symbol: 'SD', category: 'Video Enhance', brand: 'Seedream' },
-    { name: 'Reve Edit', type: 'image', icon: '🎨', symbol: 'REV', category: 'Video Enhance', brand: 'Reve' },
-    { name: 'Omnihuman V1.5', type: 'image', icon: '👥', symbol: 'OMN', category: 'Lip Sync', brand: 'Omnihuman', logo: 'https://logo.clearbit.com/tencent.com' },
-    { name: 'Sync 2 Pro', type: 'image', icon: '🎤', symbol: 'SYN', category: 'Lip Sync', brand: 'Sync' },
-    { name: 'Pixverse Lipsync', type: 'image', icon: '👄', symbol: 'PIX', category: 'Lip Sync', brand: 'Pixverse', logo: 'https://logo.clearbit.com/pixverse.ai' },
-    { name: 'Kling AI Avatar', type: 'image', icon: '🤖', symbol: 'KLG', category: 'Lip Sync', brand: 'Kling', logo: 'https://logo.clearbit.com/klingai.com' },
-    { name: 'Rodin', type: 'stableDiffusion', icon: '🎭', symbol: 'ROD', category: '3D', brand: 'Rodin' },
-    { name: 'Hunyuan 3D', type: 'stableDiffusion', icon: '🎪', symbol: 'HY3', category: '3D', brand: 'Hunyuan', logo: 'https://logo.clearbit.com/tencent.com' },
-    { name: 'Trellis', type: 'stableDiffusion', icon: '📦', symbol: 'TRL', category: '3D', brand: 'Trellis', logo: 'https://logo.clearbit.com/trellis.xyz' },
-    { name: 'Meshy', type: 'stableDiffusion', icon: '🧩', symbol: 'MSH', category: '3D', brand: 'Meshy', logo: 'https://logo.clearbit.com/meshy.ai' },
-    { name: 'Wan Vace Depth', type: 'stableDiffusion', icon: '🔷', symbol: 'WN', category: 'Advanced', brand: 'Wan' },
-    { name: 'Wan Vace Pose', type: 'stableDiffusion', icon: '🔷', symbol: 'WN', category: 'Advanced', brand: 'Wan' },
-    { name: 'Wan Vace Reframe', type: 'stableDiffusion', icon: '🔷', symbol: 'WN', category: 'Advanced', brand: 'Wan' },
-    { name: 'Wan Vace Outpaint', type: 'stableDiffusion', icon: '🔷', symbol: 'WN', category: 'Advanced', brand: 'Wan' },
-    { name: 'Wan 2.5', type: 'stableDiffusion', icon: '🔷', symbol: 'WN', category: 'Advanced', brand: 'Wan' },
-    { name: 'Wan 2.2', type: 'stableDiffusion', icon: '🔷', symbol: 'WN', category: 'Advanced', brand: 'Wan' },
-    { name: 'Wan2.1 With Lora', type: 'stableDiffusion', icon: '🔷', symbol: 'WN', category: 'Advanced', brand: 'Wan' },
-    { name: 'Prompt', type: 'prompt', icon: '📝', symbol: 'PR', category: 'Helpers', brand: 'AI' },
-    { name: 'Image Upload', type: 'imageUpload', icon: '📤', symbol: 'UP', category: 'Helpers', brand: 'AI' },
-  ];
+  const models = MODELS;
+  const tools = TOOLS;
 
-  const tools: PaletteItem[] = [
-    { name: 'Remove Background', type: 'image', icon: '🎭', symbol: 'BG-', category: 'Background', brand: 'AI' },
-    { name: 'Replace Background', type: 'image', icon: '🌅', symbol: 'BG+', category: 'Background', brand: 'AI' },
-    { name: 'Content-Aware Fill', type: 'image', icon: '🎨', symbol: 'FILL', category: 'Background', brand: 'AI' },
-    { name: 'Upscale', type: 'upscale', icon: '🔍', symbol: '↑↑', category: 'Edit', brand: 'AI' },
-    { name: 'Inpaint', type: 'inpaint', icon: '🖌️', symbol: 'PAINT', category: 'Edit', brand: 'AI' },
-    { name: 'Crop', type: 'image', icon: '✂️', symbol: 'CROP', category: 'Edit', brand: 'AI' },
-    { name: 'Blur', type: 'image', icon: '💨', symbol: 'BLUR', category: 'Edit', brand: 'AI' },
-    { name: 'Invert', type: 'image', icon: '🔄', symbol: 'INV', category: 'Edit', brand: 'AI' },
-    { name: 'Relight', type: 'image', icon: '💡', symbol: 'LITE', category: 'Edit', brand: 'AI' },
-    { name: 'Video Smoother', type: 'image', icon: '✨', symbol: 'SMOOTH', category: 'Video', brand: 'AI' },
-    { name: 'Frame Interpolation', type: 'image', icon: '⚡', symbol: 'FPS', category: 'Video', brand: 'AI' },
-    { name: 'Video to Audio', type: 'image', icon: '🎵', symbol: 'V→A', category: 'Video', brand: 'AI' },
-    { name: 'Audio to Video', type: 'image', icon: '🎤', symbol: 'A→V', category: 'Video', brand: 'AI' },
-    { name: 'Control / IPAdapter SDXL', type: 'image', icon: '⚙️', symbol: 'CTL', category: 'Control', brand: 'SD' },
-    { name: 'ID Preservation - Flux', type: 'image', icon: '👤', symbol: 'ID', category: 'Control', brand: 'Flux', logo: 'https://logo.clearbit.com/blackforestlabs.ai' },
-    { name: 'LoRA Control', type: 'image', icon: '🎛️', symbol: 'LORA', category: 'Control', brand: 'AI' },
-    { name: 'Vectorizer', type: 'image', icon: '📐', symbol: 'VEC', category: 'Graphics', brand: 'AI' },
-    { name: 'Recraft V3 SVG', type: 'image', icon: '✏️', symbol: 'RC', category: 'Graphics', brand: 'Recraft', logo: 'https://logo.clearbit.com/recraft.ai' },
-    { name: 'Text To Vector', type: 'image', icon: '📝', symbol: 'T→V', category: 'Graphics', brand: 'AI' },
-    { name: 'Face Align', type: 'image', icon: '👁️', symbol: 'FACE', category: 'Face', brand: 'AI' },
-    { name: 'Nano Banana', type: 'image', icon: '🍌', symbol: 'NB', category: 'Face', brand: 'Nano' },
-    { name: 'Dreamshaper V8', type: 'image', icon: '💭', symbol: 'DS', category: 'Face', brand: 'Dream' },
-    { name: 'Prompt', type: 'prompt', icon: '📝', symbol: 'PR', category: 'Helpers', brand: 'AI' },
-    { name: 'Image Upload', type: 'imageUpload', icon: '📤', symbol: 'UP', category: 'Helpers', brand: 'AI' },
-  ];
+  const pollStatus = async (taskId: string, runId?: string) => {
+    let attempts = 0;
+    const maxAttempts = 30; // 30s timeout for client-side polling
+    
+    while (attempts < maxAttempts) {
+        await new Promise(r => setTimeout(r, 1000));
+        try {
+            const res = await fetch(`/api/status?taskId=${taskId}&runId=${runId || ''}`);
+            if (!res.ok) continue;
+            const data = await res.json();
+            
+            if (data.status === 'completed') {
+                return data;
+            } else if (data.status === 'failed') {
+                throw new Error(data.error || 'Task failed');
+            }
+            // else: processing, continue
+        } catch (e) {
+            console.warn('Poll error:', e);
+        }
+        attempts++;
+    }
+    throw new Error('Timeout waiting for result');
+  };
 
   return (
     <ReactFlowProvider>
@@ -190,7 +120,9 @@ export default function Canvas({ roomId }: CanvasProps) {
         // sync active category from sidebar for icon rail highlighting
         activeCategory={activeCategory}
         onRequestScrollToCategory={(cat?: string) => setScrollToCategory(cat)}
-        onActiveCategoryChange={(cat: string) => { setActiveCategory(cat); setRailManualKey(undefined); }}
+        onActiveCategoryChange={(cat: string) => {
+          setActiveCategory(cat);
+        }}
         scrollToCategory={scrollToCategory}
         onConsumeScrollToCategory={() => setScrollToCategory(undefined)}
         focusSearchSignal={focusSearchSignal}
@@ -208,16 +140,16 @@ export default function Canvas({ roomId }: CanvasProps) {
 // Inner component that has access to React Flow context
 interface CanvasContentProps extends CanvasProps {
   nodes: Node[];
-  setNodes: (nodes: Node[]) => void;
+  setNodes: Dispatch<SetStateAction<Node[]>>;
   edges: Edge[];
-  setEdges: (edges: Edge[]) => void;
+  setEdges: Dispatch<SetStateAction<Edge[]>>;
   onNodesChange: (changes: NodeChange[]) => void;
   onEdgesChange: (changes: EdgeChange[]) => void;
   sidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
   models: PaletteItem[];
   tools: PaletteItem[];
-  addNode: (type: string, label: string) => void;
+  addNode: (type: string, label: string, logo?: string) => void;
   activeCategory: string;
   onRequestScrollToCategory: (category?: string) => void;
   onActiveCategoryChange?: (category: string) => void;
@@ -258,13 +190,14 @@ function CanvasContent({
   outputPanelOpen,
   setOutputPanelOpen,
 }: CanvasContentProps) {
+  const { user } = useUser();
+  const router = useRouter(); // Add router here
   const { resolvedTheme } = useTheme();
   const isDark = (resolvedTheme || 'dark') === 'dark';
   const { workflow, updateWorkflow } = useWorkflow(roomId);
-  const [selectedTool, setSelectedTool] = useState<string | null>(null);
+  const [selectedTool] = useState<string | null>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const { screenToFlowPosition } = useReactFlow();
-  const [railManualKey, setRailManualKey] = useState<string | undefined>(undefined);
   const [sidebarTabLocal, setSidebarTabLocal] = useState<'models' | 'tools'>(externalActiveTab || 'models');
   const [showMinimap, setShowMinimap] = useState<boolean>(true);
   const [snapToGrid, setSnapToGrid] = useState<boolean>(false);
@@ -275,20 +208,37 @@ function CanvasContent({
   const [agentBusy, setAgentBusy] = useState<boolean>(false);
   const [agentInput, setAgentInput] = useState<string>("");
   const [agentHidden, setAgentHidden] = useState<boolean>(false);
+  const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'general' | 'billing'>('general');
+  
+  // Processing state for visual indicator
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
+
   const canvasRef = useRef<HTMLDivElement>(null);
+  const workflowId = useMemo(
+    () => (workflow && (workflow as { _id?: string })._id) || roomId,
+    [workflow, roomId]
+  );
+
+  const handleTitleChange = useCallback((newTitle: string) => {
+    if (workflowId) {
+      updateWorkflow({ title: newTitle });
+    }
+  }, [workflowId, updateWorkflow]);
+
   useEffect(() => {
     if (externalActiveTab) setSidebarTabLocal(externalActiveTab);
   }, [externalActiveTab]);
 
-  // Sync with Convex workflow on load only
+  // Sync with Convex workflow on load only (to prevent fighting with local state)
+  const loadedRef = useRef(false);
   useEffect(() => {
-    if (workflow?.nodes && workflow.nodes.length > 0) {
-      setNodes(workflow.nodes);
+    if (!loadedRef.current && workflow?.nodes) {
+      setNodes(workflow.nodes as Node[]);
+      setEdges((workflow.edges || []) as Edge[]);
+      loadedRef.current = true;
     }
-    if (workflow?.edges && workflow.edges.length > 0) {
-      setEdges(workflow.edges);
-    }
-  }, [workflow?._id]);
+  }, [workflow, setNodes, setEdges]);
 
   // Persist layout and preferences
   useEffect(() => {
@@ -327,7 +277,7 @@ function CanvasContent({
         clearTimeout(debounceTimerRef.current);
       }
     };
-  }, [nodes, edges, roomId, updateWorkflow]);
+  }, [nodes, edges, updateWorkflow]);
 
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
@@ -371,15 +321,86 @@ function CanvasContent({
     [edges, setEdges]
   );
 
+  const pollStatus = useCallback(async (taskId: string, runId?: string) => {
+    let attempts = 0;
+    const maxAttempts = 30; // 30s timeout for client-side polling
+    
+    while (attempts < maxAttempts) {
+        await new Promise(r => setTimeout(r, 1000));
+        try {
+            const res = await fetch(`/api/status?taskId=${taskId}&runId=${runId || ''}`);
+            if (!res.ok) continue;
+            const data = await res.json();
+            
+            if (data.status === 'completed') {
+                return data;
+            } else if (data.status === 'failed') {
+                throw new Error(data.error || 'Task failed');
+            }
+            // else: processing, continue
+        } catch (e) {
+            console.warn('Poll error:', e);
+        }
+        attempts++;
+    }
+    throw new Error('Timeout waiting for result');
+  }, []);
+
   // Minimal run handler: extract first prompt and first model label
-  const handleRun = useCallback(async () => {
+  const handleRun = useCallback(async (targetNodeId?: string) => {
+    setIsProcessing(true);
+    
+    // Find ALL relevant nodes (not just the first one)
+    const promptNodes = nodes.filter((n) => n.type === 'prompt');
+    
+    let targetModelNode = null;
+    if (targetNodeId) {
+        targetModelNode = nodes.find(n => n.id === targetNodeId);
+    }
+    
+    if (!targetModelNode) {
+        const modelNodes = nodes.filter((n) => n.type === 'stableDiffusion');
+        if (modelNodes.length > 0) {
+            targetModelNode = modelNodes[0];
+        }
+    }
+    
+    if (!targetModelNode) {
+        console.warn("No model node found to run.");
+        setIsProcessing(false);
+        return;
+    }
+
+    // Update the node UI to show loading state
+    setNodes((nds: Node[]) => nds.map((n: Node) => n.id === targetModelNode!.id ? { ...n, data: { ...n.data, status: 'processing', error: undefined, output: undefined } } : n));
+    
     try {
-      const firstPrompt = nodes.find((n) => n.type === 'prompt');
-      const firstModel = nodes.find((n) => n.type === 'stableDiffusion');
-      const firstPromptData = (firstPrompt?.data ?? {}) as { prompt?: string; label?: string };
-      const firstModelData = (firstModel?.data ?? {}) as { label?: string };
-      const promptText = firstPromptData.prompt || firstPromptData.label || 'Generate an image';
-      const modelLabel = firstModelData.label || 'Stable Diffusion 3.5';
+      // Merge prompt data from potentially multiple prompt nodes connected (simplification: just take first prompt node found)
+      const promptNode = promptNodes[0]; 
+      const promptData = (promptNode?.data ?? {}) as { prompt?: string; label?: string };
+      const modelData = (targetModelNode?.data ?? {}) as { 
+        label?: string; 
+        prompt?: string;
+        aspect_ratio?: string;
+        guidance_scale?: number;
+        output_format?: string;
+        safety_tolerance?: number;
+        seed?: number;
+      };
+      
+      // Prefer the prompt from the model node itself if set, otherwise fallback to prompt node
+      const promptText = modelData.prompt || promptData.prompt || promptData.label || 'Generate an image';
+      const modelLabel = modelData.label || 'Stable Diffusion 3.5';
+      
+      // Gather extra parameters
+      const inputParams = {
+        aspect_ratio: modelData.aspect_ratio,
+        guidance_scale: modelData.guidance_scale,
+        output_format: modelData.output_format,
+        safety_tolerance: modelData.safety_tolerance,
+        seed: modelData.seed,
+      };
+
       const modelMap: Record<string, string> = {
         'Stable Diffusion 3.5': 'stable-diffusion-3.5',
         'DALL·E 3': 'dalle-3',
@@ -387,7 +408,7 @@ function CanvasContent({
         'Imagen 4': 'imagen-4',
         'Imagen 3': 'imagen-3',
         'Imagen 3 Fast': 'imagen-3-fast',
-        'Flux Pro 1.1 Ultra': 'flux-pro-1.1',
+        'Flux Pro 1.1 Ultra': 'flux-pro-1.1-ultra',
         'Flux Pro 1.1': 'flux-pro-1.1',
         'Flux Dev Redux': 'flux-dev-redux',
         'Flux Canny Pro': 'flux-canny-pro',
@@ -442,29 +463,110 @@ function CanvasContent({
         'Wan2.1 With Lora': 'wan-2-1-lora',
       };
       const model = modelMap[modelLabel] || 'stable-diffusion-3.5';
-      const workflowId = workflow?._id || roomId;
+      
+      // Call API
       const res = await fetch('/api/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model, prompt: promptText, workflowId }),
+        body: JSON.stringify({ 
+            model, 
+            prompt: promptText, 
+            workflowId,
+            email: user?.primaryEmailAddress?.emailAddress,
+            ...inputParams 
+        }),
       });
       const data = await res.json().catch(() => null);
-      const outputUrl = (data && (data.output_url || data.url)) as string | undefined;
-      if (outputUrl) {
-        setOutputs((prev) => [{ url: outputUrl, model, prompt: promptText, ts: Date.now() }, ...prev].slice(0, 24));
+      
+      if (data && data.error) {
+        // Show error in outputs
+        setOutputs((prev) => [{ 
+            url: '', 
+            model, 
+            prompt: promptText, 
+            ts: Date.now(),
+            error: data.detail || data.error 
+        }, ...prev].slice(0, 24));
         setOutputPanelOpen(true);
-        const newNode: Node = {
-          id: `node-${Date.now()}-result`,
-          type: 'image',
-          position: { x: Math.random() * 500, y: Math.random() * 400 },
-          data: { label: 'Result', imageSrc: outputUrl, imageName: 'Result' },
-        };
-        setNodes([...nodes, newNode]);
+        
+        // Update node status to error
+        setNodes((nds: Node[]) => nds.map((n: Node) => n.id === targetModelNode!.id ? { ...n, data: { ...n.data, status: 'error', error: data.detail || data.error } } : n));
+        return;
+      }
+
+      let outputUrl = (data && (data.output_url || data.url)) as string | undefined;
+      
+      // If we got a task_id but no outputUrl, start polling
+      if (!outputUrl && data && data.task_id) {
+          try {
+             const pollResult = await pollStatus(data.task_id, data.run_id);
+             outputUrl = pollResult.output_url || pollResult.url;
+          } catch (pollErr) {
+             const msg = String(pollErr);
+             setOutputs((prev) => [{ 
+                url: '', 
+                model, 
+                prompt: promptText, 
+                ts: Date.now(),
+                error: msg 
+            }, ...prev].slice(0, 24));
+            setOutputPanelOpen(true);
+             setNodes((nds: Node[]) => nds.map((n: Node) => n.id === targetModelNode!.id ? { ...n, data: { ...n.data, status: 'error', error: msg } } : n));
+        return;
+          }
+      }
+
+      if (outputUrl) {
+        setOutputs((prev) => [{ url: outputUrl!, model, prompt: promptText, ts: Date.now() }, ...prev].slice(0, 24));
+        setOutputPanelOpen(true);
+        
+        // Update node status to success and show output
+        setNodes((nds: Node[]) => nds.map((n: Node) => n.id === targetModelNode!.id ? { ...n, data: { ...n.data, status: 'completed', output: outputUrl } } : n));
+      } else {
+         // Fallback generic error
+         const errMsg = "Unknown error occurred";
+         setOutputs((prev) => [{ 
+            url: '', 
+            model, 
+            prompt: promptText, 
+            ts: Date.now(),
+            error: errMsg
+        }, ...prev].slice(0, 24));
+        setOutputPanelOpen(true);
+        
+        setNodes((nds: Node[]) => nds.map((n: Node) => n.id === targetModelNode!.id ? { ...n, data: { ...n.data, status: 'error', error: errMsg } } : n));
       }
     } catch (e) {
       console.error('Run failed', e);
+      const errMsg = String(e);
+      setOutputs((prev) => [{ 
+            url: '', 
+            model: 'System', 
+            prompt: 'System Error', 
+            ts: Date.now(),
+            error: errMsg
+        }, ...prev].slice(0, 24));
+        setOutputPanelOpen(true);
+        
+        if (targetModelNode) {
+            setNodes((nds: Node[]) => nds.map((n: Node) => n.id === targetModelNode!.id ? { ...n, data: { ...n.data, status: 'error', error: errMsg } } : n));
+        }
+    } finally {
+      setIsProcessing(false);
     }
-  }, [nodes]);
+  }, [nodes, workflowId, setNodes, setOutputs, setOutputPanelOpen, pollStatus, user]);
+
+  // Listen to node-run events
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { nodeId } = (e as CustomEvent<{ nodeId: string }>).detail || {};
+      if (nodeId) {
+        handleRun(nodeId);
+      }
+    };
+    window.addEventListener('karate-run-node', handler as EventListener);
+    return () => window.removeEventListener('karate-run-node', handler as EventListener);
+  }, [handleRun]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -644,206 +746,213 @@ function CanvasContent({
   }, [nodes, edges, setNodes, setEdges]);
 
   return (
-    <div className="h-screen w-screen flex bg-white text-zinc-900 dark:bg-black dark:text-white">
-      {/* Icon Rail */}
-      <div className="w-16 bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex flex-col items-center gap-4 py-6">
-        {(() => {
-          const availableCategories = Array.from(new Set([...models, ...tools].map((i) => i.category)));
-          const categoryForIcon = (key: string) => {
-            const prefs: Record<string, string[]> = {
-              models: ['Image Gen', 'Video Gen', '3D', 'Advanced'],
-              tools: ['Edit', 'Background', 'Image Enhance', 'Graphics', 'Face', 'Control'],
-              helpers: ['Helpers'],
-            };
-            const candidates = prefs[key] || [];
-            return candidates.find((c) => availableCategories.includes(c));
-          };
-          const iconKeyForCategory = (cat: string) => {
-            if (['Image Gen','Video Gen','3D','Advanced'].includes(cat)) return 'models';
-            if (['Edit','Background','Image Enhance','Graphics','Face','Control'].includes(cat)) return 'tools';
-            if (cat === 'Helpers') return 'helpers';
-            return undefined;
-          };
-          const activeRailKey = railManualKey || iconKeyForCategory(activeCategory || '');
-
-          // Three primary buttons: Models, Tools, Primary Tools (Helpers)
-          const railItems = [
-            { key: 'models', icon: <ViewInArIcon />, label: 'Models', onClick: () => { setSidebarOpen(true); setSidebarTabLocal('models'); setRailManualKey('models'); onRequestScrollToCategory(categoryForIcon('models') || 'Image Gen'); } },
-            { key: 'tools', icon: <HandymanIcon />, label: 'Tools', onClick: () => { setSidebarOpen(true); setSidebarTabLocal('tools'); setRailManualKey('tools'); onRequestScrollToCategory(categoryForIcon('tools') || 'Edit'); } },
-            { key: 'helpers', icon: <CloudUploadIcon />, label: 'Primary Tools', onClick: () => { setSidebarOpen(true); setSidebarTabLocal('tools'); setRailManualKey('helpers'); onRequestScrollToCategory('Helpers'); } },
-          ];
-
-          return (
-            <>
-              <motion.button
-                onClick={() => setSidebarOpen(!sidebarOpen)}
-                className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
-                  sidebarOpen ? 'bg-yellow-400 text-black' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
-                }`}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                title="Toggle Sidebar"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-              </motion.button>
-
-              {railItems.map((item) => (
-                <motion.button
-                  key={item.key}
-                  onClick={() => item.onClick()}
-                  className={`w-10 h-10 rounded-lg transition-all flex items-center justify-center ${
-                    activeRailKey === item.key
-                      ? 'bg-yellow-400 text-black'
-                      : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-yellow-400'
-                  }`}
-                  whileHover={{ scale: 1.1, y: -2 }}
-                  whileTap={{ scale: 0.95 }}
-                  title={item.label}
-                >
-                  {item.icon}
-                </motion.button>
-              ))}
-            </>
-          );
-        })()}
-      </div>
-
-      {/* Sidebar */}
-      <Sidebar
-        isOpen={sidebarOpen}
-        models={models}
-        tools={tools}
-        externalActiveTab={sidebarTabLocal}
-        focusSearchSignal={focusSearchSignal}
-        onActiveCategoryChange={onActiveCategoryChange}
-        scrollToCategory={scrollToCategory}
-        onConsumeScrollToCategory={onConsumeScrollToCategory}
-        onAddNode={(type: string, label: string) => {
-          const newNode: Node = {
-            id: `node-${Date.now()}`,
-            data: { label },
-            position: { x: Math.random() * 500, y: Math.random() * 500 },
-            type,
-          };
-          setNodes([...nodes, newNode]);
-          setSidebarOpen(false);
-        }}
+    <div className="h-screen w-screen flex flex-col bg-white text-zinc-900 dark:bg-black dark:text-white">
+      {/* Top Bar */}
+      <EditorHeader
+        workflowTitle={workflow?.title || 'My First Flow'}
+        nodeCount={nodes.length}
+        edgeCount={edges.length}
+        selectedTool={selectedTool}
+        showMinimap={showMinimap}
+        snapToGrid={snapToGrid}
+        outputPanelOpen={outputPanelOpen}
+        isProcessing={isProcessing}
+        onToggleMinimap={() => setShowMinimap((v) => !v)}
+        onToggleGrid={() => setSnapToGrid((v) => !v)}
+        onToggleOutputs={() => setOutputPanelOpen((v) => !v)}
+        onRun={handleRun}
+        onUndo={() => { /* Todo */ }}
+        onRedo={() => { /* Todo */ }}
+        onTitleChange={handleTitleChange}
       />
 
-      {/* Canvas Area */}
-      <div className="flex-1 flex flex-col bg-white dark:bg-black">
-        {/* Top Bar */}
-        <motion.header
-          className="h-14 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between px-6"
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <div className="flex items-center gap-3 text-sm text-zinc-400">
-            <span className="font-semibold text-white">My First Flow</span>
-            <span>•</span>
-            <span>{nodes.length} nodes</span>
-            <span>•</span>
-            <span>{edges.length} connections</span>
-            {selectedTool && (
+      <div className="flex flex-1">
+        {/* Icon Rail */}
+        <div className="w-16 bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex flex-col items-center gap-4 py-6">
+          {(() => {
+            const availableCategories = Array.from(
+              new Set([...models, ...tools].map((i) => i.category)),
+            );
+            const categoryForIcon = (key: string) => {
+                  // Map rail key to category names
+                  const map: Record<string, string[]> = {
+                    image: ['Image Gen', 'Advanced'],
+                    video: ['Video Gen', 'Video Enhance', 'Lip Sync'],
+                    audio: ['Audio Gen'],
+                    threeD: ['3D'],
+                tools: ['Edit', 'Background', 'Image Enhance', 'Graphics', 'Face', 'Control'],
+                helpers: ['Helpers'],
+              };
+                  return map[key]?.find(c => availableCategories.includes(c));
+                };
+
+                const activeRailKey = (() => {
+                    if (['Image Gen', 'Advanced'].includes(activeCategory)) return 'image';
+                    if (['Video Gen', 'Video Enhance', 'Lip Sync'].includes(activeCategory)) return 'video';
+                    if (['Audio Gen'].includes(activeCategory)) return 'audio';
+                    if (['3D'].includes(activeCategory)) return 'threeD';
+                    if (['Edit', 'Background', 'Image Enhance', 'Graphics', 'Face', 'Control'].includes(activeCategory)) return 'tools';
+                    if (activeCategory === 'Helpers') return 'helpers';
+              return undefined;
+                })();
+
+            const railItems = [
+              {
+                    key: 'image',
+                    icon: <PhotoIcon />,
+                    label: 'Image Generation',
+                    targetTab: 'models',
+                    targetCat: 'Image Gen',
+                  },
+                  {
+                    key: 'video',
+                    icon: <MovieIcon />,
+                    label: 'Video Generation',
+                    targetTab: 'models',
+                    targetCat: 'Video Gen',
+                  },
+                  {
+                    key: 'audio',
+                    icon: <AudiotrackIcon />,
+                    label: 'Audio Generation',
+                    targetTab: 'models',
+                    targetCat: 'Audio Gen',
+                  },
+                  {
+                    key: 'threeD',
+                    icon: <ViewInArIcon />,
+                    label: '3D Models',
+                    targetTab: 'models',
+                    targetCat: '3D',
+                  },
+                  {
+                    key: 'tools',
+                    icon: <BrushIcon />, // Changed from Handyman for "Tools"
+                    label: 'Editing Tools',
+                    targetTab: 'tools',
+                    targetCat: 'Edit',
+              },
+              {
+                key: 'helpers',
+                icon: <CloudUploadIcon />,
+                    label: 'Files & Assets',
+                    targetTab: 'models', // Fix: 'Helpers' are in 'models' in models array
+                    targetCat: 'Helpers',
+              },
+            ];
+
+            return (
               <>
-                <span>•</span>
-                <span className="text-yellow-400">{selectedTool}</span>
+                <motion.button
+                  onClick={() => setSidebarOpen(!sidebarOpen)}
+                  className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
+                    sidebarOpen ? 'bg-yellow-400 text-black' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                  }`}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  title="Toggle Sidebar"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                </motion.button>
+
+                {railItems.map((item) => (
+                  <motion.button
+                    key={item.key}
+                    onClick={() => {
+                        if (!sidebarOpen) setSidebarOpen(true);
+                        setSidebarTabLocal(item.targetTab as 'models' | 'tools');
+                        // Find first available category matching the group
+                        const cat = categoryForIcon(item.key) || item.targetCat;
+                        onRequestScrollToCategory(cat);
+                    }}
+                    className={`w-10 h-10 rounded-lg transition-all flex items-center justify-center ${
+                      activeRailKey === item.key
+                        ? 'bg-yellow-400 text-black'
+                        : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-yellow-400'
+                    }`}
+                    whileHover={{ scale: 1.1, y: -2 }}
+                    whileTap={{ scale: 0.95 }}
+                    title={item.label}
+                  >
+                    {item.icon}
+                  </motion.button>
+                ))}
+
+                {/* Re-open AI assistant when hidden, as part of the rail */}
+                {agentHidden && (
+                  <motion.button
+                    onClick={() => {
+                      setAgentHidden(false);
+                      setAgentOpen(true);
+                    }}
+                    className="mt-auto w-10 h-10 rounded-lg flex items-center justify-center bg-zinc-900 text-zinc-200 border border-zinc-700 hover:border-yellow-400 hover:text-yellow-300 transition-all"
+                    whileHover={{ scale: 1.08, y: -2 }}
+                    whileTap={{ scale: 0.96 }}
+                    title="Open AI assistant"
+                  >
+                    🤖
+                  </motion.button>
+                )}
+
+                {/* Billing Button */}
+                <motion.button
+                  onClick={() => {
+                    setSettingsTab('billing');
+                    setSettingsPanelOpen(true);
+                  }}
+                  className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-white ${
+                    !agentHidden ? 'mt-auto' : ''
+                  }`}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  title="Credits & Billing"
+                >
+                  <CreditCardIcon className="w-5 h-5" />
+                </motion.button>
+
+                {/* User Settings Button */}
+                <motion.button
+                  onClick={() => {
+                    setSettingsTab('general');
+                    setSettingsPanelOpen(true);
+                  }}
+                  className="w-10 h-10 rounded-lg flex items-center justify-center transition-all bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-white"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  title="Settings"
+                >
+                  <SettingsIcon className="w-5 h-5" />
+                </motion.button>
               </>
-            )}
-          </div>
+            );
+          })()}
+        </div>
 
-          <div className="flex items-center gap-2">
-            {/* Compact horizontal control group styled like zoom controls */}
-            <div className="flex items-center gap-1 bg-zinc-900/70 border border-zinc-700 rounded-md p-1">
-              <button
-                onClick={() => setShowMinimap((v) => !v)}
-                className={`w-8 h-8 rounded-md border ${showMinimap ? 'bg-yellow-400 text-black border-yellow-400' : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700 hover:text-white'} flex items-center justify-center`}
-                title="Minimap"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="8" height="6" rx="1"/><rect x="13" y="3" width="8" height="10" rx="1"/><rect x="3" y="11" width="8" height="10" rx="1"/></svg>
-              </button>
-              <button
-                onClick={() => setSnapToGrid((v) => !v)}
-                className={`w-8 h-8 rounded-md border ${snapToGrid ? 'bg-yellow-400 text-black border-yellow-400' : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700 hover:text-white'} flex items-center justify-center`}
-                title="Snap to grid"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h4v4H3V3zm7 0h4v4h-4V3zm7 0h4v4h-4V3zM3 10h4v4H3v-4zm7 0h4v4h-4v-4zm7 0h4v4h-4v-4zM3 17h4v4H3v-4zm7 0h4v4h-4v-4zm7 0h4v4h-4v-4z"/></svg>
-              </button>
-              <button
-                className="w-8 h-8 rounded-md border bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700 hover:text-white flex items-center justify-center"
-                title="Undo"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5v3l-4-4 4-4v3c5.523 0 10 4.477 10 10h-2a8 8 0 00-8-8z"/></svg>
-              </button>
-              <button
-                className="w-8 h-8 rounded-md border bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700 hover:text-white flex items-center justify-center"
-                title="Redo"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5v3l4-4-4-4v3a10 10 0 00-10 10h2a8 8 0 018-8z"/></svg>
-              </button>
-            </div>
+        {/* Sidebar */}
+        <Sidebar
+          isOpen={sidebarOpen}
+          models={models}
+          tools={tools}
+          externalActiveTab={sidebarTabLocal}
+          focusSearchSignal={focusSearchSignal}
+          onActiveCategoryChange={onActiveCategoryChange}
+          scrollToCategory={scrollToCategory}
+          onConsumeScrollToCategory={onConsumeScrollToCategory}
+          onAddNode={(type: string, label: string, logo?: string) => {
+            const newNode: Node = {
+              id: `node-${Date.now()}`,
+              data: { label, logo },
+              position: { x: Math.random() * 500, y: Math.random() * 500 },
+              type,
+            };
+            setNodes([...nodes, newNode]);
+            setSidebarOpen(false);
+          }}
+        />
 
-            {/* Action buttons */}
-            <Tooltip title="Run workflow">
-              <Button
-                variant="contained"
-                size="small"
-                startIcon={<PlayArrowIcon />}
-                onClick={handleRun}
-                sx={{
-                  backgroundColor: '#fbbf24',
-                  color: '#000',
-                  fontWeight: 600,
-                  '&:hover': { backgroundColor: '#fcd34d', boxShadow: '0 0 15px rgba(250, 204, 21, 0.5)' },
-                }}
-              >
-                Run
-              </Button>
-            </Tooltip>
-            <Tooltip title="Share workflow">
-              <Button
-                variant="outlined"
-                size="small"
-                startIcon={<ShareIcon />}
-                sx={{
-                  color: '#06b6d4',
-                  borderColor: '#164e63',
-                  '&:hover': { backgroundColor: '#0c4a6e', borderColor: '#06b6d4' },
-                }}
-              >
-                Share
-              </Button>
-            </Tooltip>
-
-            <Tooltip title="Outputs">
-              <Button
-                variant="outlined"
-                size="small"
-                onClick={() => setOutputPanelOpen((v) => !v)}
-                sx={{ color: outputPanelOpen ? '#000' : '#e5e7eb', borderColor: outputPanelOpen ? '#fbbf24' : '#3f3f46', backgroundColor: outputPanelOpen ? '#fbbf24' : 'transparent', '&:hover': { backgroundColor: outputPanelOpen ? '#fcd34d' : '#27272a' } }}
-              >
-                Outputs
-              </Button>
-            </Tooltip>
-
-            {CLERK_ENABLED ? (
-              <div className="flex items-center gap-2">
-                <SignedOut>
-                  <SignInButton mode="modal">
-                    <Button variant="outlined" size="small">Sign in</Button>
-                  </SignInButton>
-                </SignedOut>
-                <SignedIn>
-                  <UserButton afterSignOutUrl="/" appearance={{ elements: { avatarBox: 'w-8 h-8' } }} />
-                </SignedIn>
-              </div>
-            ) : null}
-          </div>
-        </motion.header>
-
-        {/* Canvas */}
+        {/* Canvas Area */}
         <div
           className="flex-1 bg-white dark:bg-black relative"
           onDragOver={handleDragOver}
@@ -873,6 +982,20 @@ function CanvasContent({
             <Controls showInteractive={true} showFitView={true} showZoom={true} position="bottom-left" />
             {showMinimap && <MiniMap nodeColor="#999" maskColor="rgba(0,0,0,0.2)" />}            
           </ReactFlow>
+          {/* Custom connection line styling (handled via CSS or internal RF props, 
+              but for 'hover' effect on handles, we use CSS in globals.css or styled handles) 
+           */}
+           <style jsx global>{`
+             .react-flow__handle:hover {
+               background-color: #fbbf24 !important; /* yellow-400 */
+               transform: scale(1.2);
+               transition: transform 0.1s;
+               border-color: #fff;
+             }
+             .react-flow__handle-connecting {
+               background-color: #fbbf24 !important;
+             }
+           `}</style>
           {/* Right Output Panel */}
           {outputPanelOpen && (
             <div className="absolute right-0 top-0 bottom-0 w-80 bg-white/95 dark:bg-zinc-900/95 border-l border-zinc-200 dark:border-zinc-800 backdrop-blur z-30">
@@ -885,10 +1008,18 @@ function CanvasContent({
                   <div className="text-xs text-zinc-500">No outputs yet. Click Run to generate.</div>
                 ) : (
                   outputs.map((o) => (
-                    <div key={o.ts} className="border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden">
-                      <div className="aspect-square bg-black/20 flex items-center justify-center overflow-hidden">
-                        <img src={o.url} alt="output" className="object-cover w-full h-full" />
-                      </div>
+                    <div key={o.ts} className={`border rounded-lg overflow-hidden ${o.error ? 'border-red-500/50 bg-red-500/5' : 'border-zinc-200 dark:border-zinc-800'}`}>
+                      {o.error ? (
+                        <div className="p-4 flex flex-col items-center text-center gap-2 text-red-400">
+                          <svg className="w-8 h-8 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                          <p className="text-xs font-medium">Generation Failed</p>
+                          <p className="text-[10px] opacity-80">{o.error}</p>
+                        </div>
+                      ) : (
+                        <div className="relative aspect-square bg-black/20 flex items-center justify-center overflow-hidden">
+                          <Image src={o.url} alt="output" fill className="object-cover" />
+                        </div>
+                      )}
                       <div className="p-2 text-[11px] text-zinc-500">
                         <div className="truncate"><span className="text-zinc-400">Model:</span> {o.model}</div>
                         <div className="truncate"><span className="text-zinc-400">Prompt:</span> {o.prompt}</div>
@@ -1026,11 +1157,11 @@ function CanvasContent({
                         animate={{ height: 'auto', opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
                       >
-                        <div className="p-3">
-                          <div className="flex items-center gap-2">
-                          <input
-                            className="flex-1 context-search agent-input"
-                            placeholder="Create workflows with natural language, e.g., upload an image, remove background, then upscale 4×"
+                        <div className="p-4">
+                          <div className="flex items-center gap-3 bg-zinc-900/50 border border-zinc-800 rounded-2xl p-1.5 pl-4 focus-within:border-zinc-700 focus-within:bg-zinc-900 transition-all">
+                            <input
+                              className="flex-1 bg-transparent border-none outline-none text-sm text-zinc-200 placeholder-zinc-600 font-medium"
+                              placeholder="Describe your workflow, e.g. 'remove background from image then upscale it 4x'..."
                               value={agentInput}
                               onChange={(e) => setAgentInput(e.target.value)}
                               onKeyDown={(e) => { if (e.key === 'Enter') addWorkflowFromPrompt(agentInput); }}
@@ -1038,13 +1169,13 @@ function CanvasContent({
                             <button
                               onClick={() => addWorkflowFromPrompt(agentInput)}
                               disabled={agentBusy}
-                              className={`btn-primary px-4 ${agentBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                              className={`h-9 px-6 rounded-xl bg-gradient-to-r from-yellow-300 to-cyan-300 text-black font-bold text-sm shadow-lg hover:shadow-yellow-400/20 hover:scale-[1.02] active:scale-[0.98] transition-all ${agentBusy ? 'opacity-60 cursor-not-allowed grayscale' : ''}`}
                             >
-                              {agentBusy ? 'Thinking…' : 'Generate'}
+                              {agentBusy ? 'Building...' : 'Generate'}
                             </button>
                           </div>
-                          <div className="text-[11px] text-zinc-500 mt-2">
-                            Tip: mention models like "Stable Diffusion 3.5" or tools like "remove background", "inpaint", "upscale".
+                          <div className="text-[10px] text-zinc-600 mt-2 px-2 font-medium">
+                            <span className="text-zinc-500">Pro tip:</span> You can mention specific models like &quot;Stable Diffusion 3.5&quot; or tools like &quot;Inpaint&quot;.
                           </div>
                         </div>
                       </motion.div>
@@ -1054,24 +1185,9 @@ function CanvasContent({
               </motion.div>
             )}
           </AnimatePresence>
-
-          {/* Reopen FAB when hidden */}
-          {agentHidden && (
-            <button
-              className="absolute z-40" style={{ right: '24px', bottom: `calc(env(safe-area-inset-bottom) + 24px)` }}
-              onClick={() => { setAgentHidden(false); setAgentOpen(true); }}
-              title="Open AI assistant"
-            >
-              <div className="rounded-full w-10 h-10 bg-zinc-900/80 dark:bg-zinc-900/80 border border-zinc-700 text-white flex items-center justify-center shadow-lg">
-                🤖
-              </div>
-            </button>
-          )}
-
         </div>
       </div>
+      <SettingsPanel isOpen={settingsPanelOpen} onClose={() => setSettingsPanelOpen(false)} defaultTab={settingsTab} />
     </div>
   );
 }
-
-

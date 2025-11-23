@@ -1,144 +1,76 @@
-# Convex Connection Complete! 🎉
+# Convex Setup & Configuration
 
-All code has been updated to use **real Convex** instead of mock data. Here's what was changed:
+Karate AI relies heavily on Convex for its realtime database and serverless backend logic.
 
-## ✅ What's Been Connected
+## 1. Schema Definitions (`convex/schema.ts`)
 
-### 1. **Convex Schema & Functions** ✅
-- ✅ Replaced all shims with real Convex imports
-- ✅ Updated `schema.ts` to use `defineSchema` and `defineTable` from `convex/server`
-- ✅ Updated all Convex functions (`workflows.ts`, `agents.ts`, `runs.ts`, etc.) to use real `query` and `mutation` from `_generated/server`
-- ✅ Created `users.ts` with credit management functions
+Our schema defines the following core tables:
 
-### 2. **Frontend Integration** ✅
-- ✅ **Collaboration.tsx**: Uses `useQuery` and `useMutation` from `convex/react`
-- ✅ **Dashboard**: Uses Convex queries (no fallback banner)
-- ✅ **Canvas**: Passes `workflowId` to run API
-- ✅ **Stripe Webhook**: Persists credits to Convex using `ConvexHttpClient`
-- ✅ **Run API**: Creates run records in Convex database
+- **`users`**:
+    - `name`, `email`, `pictureUrl`: Profile info.
+    - `credits`: Current balance (Integer).
+    - `tokenIdentifier`: The unique ID from Clerk (critical for auth).
+    - `identity`: JSON object storing full Clerk identity data.
 
-### 2.1 Frontend API binding (new)
-- The frontend reads Convex functions via `frontend/lib/convex/api.ts`, which uses Convex runtime proxies:
-  
-  ```ts
-  // frontend/lib/convex/api.ts
-  import { anyApi, componentsGeneric } from 'convex/server';
-  export const api = anyApi;
-  export const internal = anyApi;
-  export const components = componentsGeneric();
-  ```
-  
-  This works immediately without waiting for codegen. If you want full type safety later, you can re-export from `convex/_generated/api` after running `npx convex dev`.
+- **`workflows`**:
+    - `nodes`, `edges`: JSON blobs storing the react-flow graph state.
+    - `title`: Project name.
+    - `owner`: The `tokenIdentifier` of the creator (for RLS).
 
-### 3. **Database Persistence** ✅
-- ✅ Workflows are saved to Convex (not localStorage)
-- ✅ Credits are persisted to Convex (not in-memory)
-- ✅ Run executions are tracked in Convex
-- ✅ Real-time collaboration ready
+- **`runs`**:
+    - `status`: 'queued', 'processing', 'completed', 'failed'.
+    - `input`: JSON blob of the prompt/settings.
+    - `output`: The resulting image/video URL.
+    - `cost`: How many credits were deducted.
+    - `workflowId`: (Optional) Link to the parent workflow.
 
-## 🚀 Next Steps: Initialize Convex
+- **`transactions`**:
+    - Immutable ledger of all credit changes.
 
-The code is **ready**, but you need to initialize Convex:
+## 2. Authentication Flow
 
-### Step 1: Install Convex CLI
-```bash
-npm install -g convex
-```
+We use **Clerk** for user management but **Convex** for data authorization.
 
-### Step 2: Initialize Convex Project
-```bash
-cd /Users/aal/Downloads/Code/karate
-npx convex init
-```
+1.  **Frontend**: Wraps the app in `<ConvexProviderWithClerk>`.
+2.  **Token Exchange**: The client fetches a JWT from Clerk and passes it to Convex.
+3.  **Backend Verification**: Convex verifies the JWT against the configured Issuer URL in `convex/auth.config.ts`.
+4.  **Resolver Access**: Inside a mutation/query, `ctx.auth.getUserIdentity()` returns the parsed user data.
 
-This will:
-- Create a Convex account (if needed)
-- Create `convex.json` config file
-- Generate `convex/_generated/` folder with TypeScript types
-- Set up your Convex deployment URL
+**Important**: You must configure a JWT Template in Clerk named "convex" for this to work.
 
-### Step 3: Start Convex Dev Server
+## 3. Initial Setup Command
+
+To initialize the Convex project locally:
+
 ```bash
 npx convex dev
 ```
-
 This will:
-- Generate TypeScript types in `convex/_generated/`
-- Deploy your schema and functions
-- Provide a local development URL
+1.  Log you in.
+2.  Create/Link a project.
+3.  Push the schema.
+4.  Push the `auth.config.ts` (ensure `CLERK_ISSUER_URL` env var is set in Convex Dashboard).
+5.  Generate TypeScript bindings in `convex/_generated`.
 
-### Step 4: Set Environment Variable
-The frontend Convex client defaults to `http://localhost:3210`. If your Convex dev server runs elsewhere, add this to `frontend/.env.local`:
-```
-NEXT_PUBLIC_CONVEX_URL=<your-convex-url-from-step-2>
-```
+## 4. Admin Actions (Mutations)
 
-### Step 5: Start Your App
-```bash
-# Terminal 1: Convex (already running from step 3)
-# Terminal 2: Frontend
-cd frontend
-npm run dev
+### `users:getOrCreate`
+Called automatically by the frontend `UserSync` component on load. It ensures the user exists in the DB and updates their profile picture/name from Clerk.
 
-# Terminal 3: Backend (optional)
-cd backend
-python3 -m uvicorn backend.main:app --reload
-```
+### `runs:create`
+Transactional operation that:
+1.  Reads user's current credits.
+2.  Throws error if `balance < cost`.
+3.  Updates `users` table (`credits = credits - cost`).
+4.  Inserts row into `transactions`.
+5.  Inserts row into `runs`.
+6.  Returns the new `runId`.
 
-## 📝 Important Notes
+## 5. Troubleshooting
 
-1. **Clerk User Mapping**: Currently, the code uses a simple email-based user lookup. For production, consider a `clerk_users` table to map Clerk IDs to Convex user IDs.
-
-2. **Workflow IDs**: The editor now expects Convex workflow IDs. When creating workflows from the dashboard, they'll automatically get Convex IDs.
-
-3. **Error Handling**: All Convex calls have error handling - if Convex isn't configured, the app will gracefully degrade (though features won't persist).
-
-## 🔍 Files Changed
-
-### Convex Backend:
-- `convex/schema.ts` - Real Convex schema
-- `convex/workflows.ts` - Real Convex functions
-- `convex/agents.ts` - Real Convex functions
-- `convex/agentsOps.ts` - Real Convex functions
-- `convex/runs.ts` - Real Convex functions
-- `convex/marketing.ts` - Real Convex functions
-- `convex/users.ts` - **NEW** - User & credit management
-
-### Frontend:
-- `frontend/components/Realtime/Collaboration.tsx` - Real Convex hooks
-- `frontend/pages/dashboard.tsx` - Convex queries
-- `frontend/pages/api/stripe/webhook.ts` - Convex mutations
-- `frontend/pages/api/run.ts` - Convex run tracking
-- `frontend/components/NodeEditor/Canvas.tsx` - Passes workflowId
-
-## ✨ What Works Now
-
-Once Convex is initialized:
-- ✅ Workflows persist to database
-- ✅ Real-time collaboration
-- ✅ Credits persist across restarts
-- ✅ Run execution history
-- ✅ Multi-user support
-- ✅ No more mock data!
-
-## 🐛 Troubleshooting
-
-**"Cannot find module '_generated/server'"**
-- Run `npx convex dev` to generate types
-
-**"Convex client not configured"**
-- Ensure `npx convex dev` is running
-- Set `NEXT_PUBLIC_CONVEX_URL` in `frontend/.env.local` (defaults to `http://localhost:3210`)
-
-**Dashboard shows older "Convex not initialized" copy**
-- The dashboard now uses Convex directly; that banner was removed. If you still see it, restart dev servers and hard-refresh the browser.
-
-**"Workflows not saving"**
-- Check Convex dev server is running
-- Check browser console for errors
-- Verify `NEXT_PUBLIC_CONVEX_URL` is set correctly
-
----
-
-**All code is ready! Just initialize Convex and everything will work! 🚀**
-
+-   **"No identity found"**:
+    -   Check if the user is logged in on the frontend.
+    -   Verify `convex/auth.config.ts` has the correct Clerk Issuer URL.
+    -   Verify the "convex" JWT template exists in Clerk.
+-   **"Insufficient credits"**:
+    -   The system is working as intended! Use the admin script to grant free credits.

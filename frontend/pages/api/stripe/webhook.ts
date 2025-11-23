@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import Stripe from 'stripe';
 import { ConvexHttpClient } from 'convex/browser';
 import { api } from '../../../lib/convex/api';
+import * as Sentry from "@sentry/nextjs";
 
 export const config = {
   api: { bodyParser: false },
@@ -13,9 +14,10 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', { apiVersion: '20
 const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL || process.env.CONVEX_URL;
 const convexClient = convexUrl ? new ConvexHttpClient(convexUrl) : null;
 
-async function buffer(readable: any) {
-  const chunks = [] as Buffer[];
-  for await (const chunk of readable) {
+async function buffer(readable: AsyncIterable<Buffer | string> | NodeJS.ReadableStream) {
+  const chunks: Buffer[] = [];
+  const asyncIterable = readable as AsyncIterable<Buffer | string>;
+  for await (const chunk of asyncIterable) {
     chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
   }
   return Buffer.concat(chunks);
@@ -23,18 +25,14 @@ async function buffer(readable: any) {
 
 async function addCreditsToUser(userId: string, creditsAmount: number) {
   if (!convexClient) {
-    console.warn('Convex not configured - credits not persisted');
+    const msg = 'Convex not configured - credits not persisted';
+    console.warn(msg);
+    Sentry.captureMessage(msg, 'warning');
     return;
   }
 
   try {
     // First, get or create user by Clerk ID
-    // Note: This assumes userId is a Clerk user ID
-    // You may need to create a mapping or use email lookup
-    // For now, we'll try to find user by email or create one
-    
-    // If userId is an email, use it directly
-    // Otherwise, you'll need a Clerk ID -> Convex user mapping
     const user = await convexClient.mutation(api.users.getOrCreate, {
       email: userId.includes('@') ? userId : `${userId}@clerk.user`,
       name: 'User',
@@ -48,7 +46,8 @@ async function addCreditsToUser(userId: string, creditsAmount: number) {
     }
   } catch (error) {
     console.error('Failed to add credits to Convex:', error);
-    // Don't throw - webhook should still succeed
+    Sentry.captureException(error);
+    // Don't throw - webhook should still succeed so Stripe doesn't retry indefinitely
   }
 }
 
@@ -85,8 +84,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.json({ received: true });
   } catch (e) {
     console.error('Stripe webhook error:', e);
+    Sentry.captureException(e);
     return res.status(400).json({ error: 'Invalid signature' });
   }
 }
-
-

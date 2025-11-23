@@ -1,6 +1,5 @@
 import { query, mutation } from './_generated/server';
 import { v } from 'convex/values';
-import type { Id } from './_generated/dataModel';
 
 // Log an agent action (e.g., support response, error event)
 export const logAction = mutation({

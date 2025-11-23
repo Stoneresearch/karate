@@ -1,8 +1,8 @@
 /** @type {import('tailwindcss').Config} */
-const { heroui } = require("@heroui/react");
-const typography = require('@tailwindcss/typography');
+import { heroui } from "@heroui/react";
+import typography from '@tailwindcss/typography';
 
-module.exports = {
+export default {
   content: [
     './pages/**/*.{js,ts,jsx,tsx}',
     './components/**/*.{js,ts,jsx,tsx}',
@@ -30,5 +30,3 @@ module.exports = {
   },
   plugins: [heroui(), typography],
 };
-
-
