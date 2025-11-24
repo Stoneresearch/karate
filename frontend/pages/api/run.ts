@@ -47,8 +47,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
   try {
     const { userId } = getAuth(req);
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-    const { model, prompt, workflowId: rawWorkflowId, aspect_ratio, guidance_scale, output_format, safety_tolerance, seed, email } = (req.body || {}) as RunRequestBody & { email?: string };
-    if (!model || !prompt) return res.status(400).json({ error: 'model and prompt required' });
+    const { model, prompt, workflowId: rawWorkflowId, aspect_ratio, guidance_scale, output_format, safety_tolerance, seed, email, image, mask } = (req.body || {}) as RunRequestBody & { email?: string, image?: string, mask?: string };
+    
+    if (!model) return res.status(400).json({ error: 'model required' });
+    // Relaxed validation: some models (upscalers) don't need a prompt if they have an image
+    if (!prompt && !image) return res.status(400).json({ error: 'Either prompt or image is required' });
 
     // Validate workflowId: ignore if it's a slug like "demo-room" or too short to be a real ID
     const workflowId = (rawWorkflowId && rawWorkflowId !== 'demo-room' && rawWorkflowId.length > 15) 
@@ -73,8 +76,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     // 1. Determine Cost
     let cost = FALLBACK_COSTS[model] || 2;
 
-    // 2. Get or create user in Convex
+    // 2. Get or create user in Convex (Non-blocking for robustness)
     let convexUserId: Id<'users'> | null = null;
+    let runId: Id<'runs'> | null = null;
+
     if (convexClient) {
       try {
         // Use email provided by client if available, otherwise construct fake email from Clerk ID
@@ -85,29 +90,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
           name: 'User',
         });
         convexUserId = (user && (user as { _id: Id<'users'> })._id) || null;
-      } catch (error) {
-        console.error('Failed to get/create user:', error);
-        return res.status(500).json({ error: 'Failed to authenticate user DB record' });
-      }
-    }
 
-    // 3. Create run record in Convex AND deduct credits
-    let runId: Id<'runs'> | null = null;
-    if (convexClient && convexUserId) {
-      try {
-        runId = await convexClient.mutation(api.runs.create, {
-          workflowId: workflowId as Id<'workflows'> | undefined,
-          userId: convexUserId,
-          input: { model, prompt },
-          cost: cost, // This triggers deduction in mutation
-        });
+        // 3. Create run record in Convex AND deduct credits (if user exists)
+        if (convexUserId) {
+            runId = await convexClient.mutation(api.runs.create, {
+                workflowId: workflowId as Id<'workflows'> | undefined,
+                userId: convexUserId,
+                input: { model, prompt },
+                cost: cost, 
+            });
+        }
       } catch (error) {
+        // Log but allow proceed if DB fails. 
+        // If insufficient credits error, we SHOULD fail.
         const msg = error instanceof Error ? error.message : String(error);
         if (msg.includes('Insufficient credits')) {
              return res.status(402).json({ error: 'Insufficient credits', detail: `This run requires ${cost} credits.` });
         }
-        console.error('Failed to create run record:', error);
-        return res.status(500).json({ error: 'Failed to initialize run transaction', detail: msg });
+        
+        console.error('Convex DB Error (Run will proceed without tracking):', error);
+        // We proceed without runId. Status polling will still work via task_id from backend.
       }
     }
 
@@ -124,6 +126,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
         body: JSON.stringify({ 
             model, 
             prompt, 
+            image,
+            mask,
             aspect_ratio, 
             guidance_scale, 
             output_format, 

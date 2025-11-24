@@ -9,7 +9,10 @@ const nextConfig = {
       { protocol: 'https', hostname: 'cdn.simpleicons.org' },
       { protocol: 'https', hostname: 'r2.dev' },
       { protocol: 'https', hostname: 'replicate.delivery' },
+      { protocol: 'https', hostname: '*.replicate.delivery' },
       { protocol: 'https', hostname: 'oaidalleapiprodscus.blob.core.windows.net' },
+      { protocol: 'https', hostname: 'avatars.githubusercontent.com' },
+      { protocol: 'https', hostname: '*.convex.cloud' },
     ],
   },
 };

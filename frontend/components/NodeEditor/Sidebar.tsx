@@ -207,7 +207,7 @@ export default function Sidebar({ isOpen, models, tools, onAddNode, onActiveCate
 
           {/* Sidebar */}
           <motion.div
-            className="fixed top-14 bottom-0 left-16 w-64 bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex flex-col z-30"
+            className="fixed top-14 bottom-0 left-16 w-64 bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex flex-col z-50"
             initial={{ x: '-100%' }}
             animate={{ x: 0 }}
             exit={{ x: '-100%' }}

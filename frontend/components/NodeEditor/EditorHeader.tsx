@@ -5,6 +5,7 @@ import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/nextjs';
 import { useQuery } from 'convex/react';
 import { api } from '../../lib/convex/api';
 import HeaderShell from '../Layout/HeaderShell';
+import { Loader } from '../ui/Loader';
 
 const pk = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || process.env.CLERK_PUBLISHABLE_KEY;
 const CLERK_ENABLED = typeof pk === 'string' && /^pk_(test|live)_[A-Za-z0-9]{20,}/.test(pk);
@@ -22,6 +23,7 @@ interface EditorHeaderProps {
   onToggleGrid: () => void;
   onToggleOutputs: () => void;
   onRun: () => void;
+  onStop?: () => void;
   onUndo?: () => void;
   onRedo?: () => void;
   onTitleChange?: (newTitle: string) => void;
@@ -40,6 +42,7 @@ export default function EditorHeader({
   onToggleGrid,
   onToggleOutputs,
   onRun,
+  onStop,
   onUndo,
   onRedo,
   onTitleChange,
@@ -169,22 +172,25 @@ export default function EditorHeader({
 
       <button
         type="button"
-        onClick={onRun}
-        disabled={isProcessing || edgeCount === 0}
+        onClick={isProcessing ? onStop : onRun}
+        disabled={!isProcessing && edgeCount === 0}
         className={`btn-compact inline-flex items-center justify-center text-xs md:text-sm ${
-          isProcessing || edgeCount === 0
+          isProcessing 
+            ? 'bg-red-500 hover:bg-red-600 text-white border-transparent animate-pulse'
+            : edgeCount === 0
             ? 'bg-zinc-200 dark:bg-zinc-800 text-zinc-400 border-transparent cursor-not-allowed'
             : 'btn-primary'
         }`}
-        title={edgeCount === 0 ? "Connect nodes to run a flow" : "Run workflow"}
+        title={isProcessing ? "Stop processing" : (edgeCount === 0 ? "Connect nodes to run a flow" : "Run workflow")}
       >
         {isProcessing ? (
           <>
-            <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-black" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            <span>Processing...</span>
+            <div className="-ml-1 mr-2">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="4" y="4" width="16" height="16" rx="2" />
+              </svg>
+            </div>
+            <span>Stop</span>
           </>
         ) : (
           <>

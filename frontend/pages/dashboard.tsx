@@ -8,6 +8,7 @@ import { useQuery, useMutation } from 'convex/react';
 import { api } from '../lib/convex/api';
 import type { Id } from '../lib/convex/dataModel';
 import DashboardHeader from '../components/Layout/DashboardHeader';
+import { Loader } from '../components/ui/Loader';
 
 type Workflow = {
   _id: string;
@@ -24,7 +25,7 @@ function ConvexDashboard() {
   const [newProjectTitle, setNewProjectTitle] = useState('');
 
   // Get workflows from Convex
-  const owner = user?.id || 'demo-user';
+  const owner = user?.id;
   const workflowsData = useQuery(api.workflows.list, { owner }) as Workflow[] | undefined;
   const createWorkflow = useMutation(api.workflows.create);
   const deleteWorkflowMutation = useMutation(api.workflows.deleteWorkflow);
@@ -118,7 +119,8 @@ function ConvexDashboard() {
             <h1 className="text-heading-xl mb-2">Your Studio</h1>
             <p className="text-sm text-zinc-600 dark:text-zinc-400">Create a new project or pick up where you left off. Everything is editable.</p>
             <div className="mt-4 flex items-center gap-2">
-              <button onClick={handleCreateClick} disabled={loading} className="btn-primary">
+              <button onClick={handleCreateClick} disabled={loading} className="btn-primary flex items-center gap-2">
+                {loading ? <Loader size="sm" className="text-black" /> : null}
                 {loading ? 'Creating…' : 'New Project'}
               </button>
               <Link href="/docs" className="btn-secondary">Read Docs</Link>
@@ -263,8 +265,9 @@ function ConvexDashboard() {
                   <button
                     onClick={() => createNewWorkflow(newProjectTitle)}
                     disabled={loading}
-                    className="px-4 py-2 text-sm rounded-lg bg-yellow-400 text-black font-medium hover:bg-yellow-500"
+                    className="px-4 py-2 text-sm rounded-lg bg-yellow-400 text-black font-medium hover:bg-yellow-500 flex items-center gap-2"
                   >
+                    {loading && <Loader size="sm" className="text-black" />}
                     {loading ? 'Creating...' : 'Create Project'}
                   </button>
                 </div>

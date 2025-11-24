@@ -23,7 +23,9 @@ router = APIRouter()
 
 class InferRequest(BaseModel):
     model: str = Field(..., description="Model identifier")
-    prompt: str = Field(..., min_length=1)
+    prompt: Optional[str] = Field(default="")
+    image: Optional[str] = None
+    mask: Optional[str] = None
     aspect_ratio: Optional[str] = None
     guidance_scale: Optional[float] = None
     output_format: Optional[str] = None
@@ -49,6 +51,8 @@ async def infer(req: InferRequest, x_user_id: Optional[str] = Header(default=Non
     # New async path: return task_id immediately
     # Pass all extra arguments as kwargs
     extra_params = {
+        "image": req.image,
+        "mask": req.mask,
         "aspect_ratio": req.aspect_ratio,
         "guidance_scale": req.guidance_scale,
         "output_format": req.output_format,

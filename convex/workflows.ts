@@ -143,6 +143,24 @@ export const deleteWorkflow = mutation({
   },
 });
 
+export const generateUploadUrl = mutation({
+  args: {},
+  handler: async (ctx: any) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthorized");
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+export const getFileUrl = mutation({
+  args: { storageId: v.string() },
+  handler: async (ctx: any, args: any) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthorized");
+    return await ctx.storage.getUrl(args.storageId);
+  },
+});
+
 export const deleteBatch = mutation({
   args: { ids: v.array(v.id('workflows')) },
   handler: async (ctx: any, args: any) => {
@@ -152,10 +170,10 @@ export const deleteBatch = mutation({
       const workflow = await ctx.db.get(id);
       if (!workflow) continue;
       
-    if (!identity || identity.tokenIdentifier !== workflow.owner) {
+      if (!identity || identity.tokenIdentifier !== workflow.owner) {
         // Skip unauthorized
         continue;
-    }
+      }
       await ctx.db.delete(id);
     }
   },

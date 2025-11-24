@@ -8,6 +8,7 @@ export type PaletteItem = {
   brand: string;
   logo?: string;
   symbol?: string;
+  slug?: string;
 };
 
 export type ContextMenuState = {

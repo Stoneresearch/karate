@@ -1,8 +1,12 @@
 import React, { memo, ReactNode, useState, useCallback, useMemo } from 'react';
 import { Handle, Position, useNodeId, useReactFlow } from '@xyflow/react';
 import Image from 'next/image';
+import { useMutation } from 'convex/react';
+import { api } from '../../../lib/convex/api';
+const apiAny = api as any;
 import { getSchemaForModel, ModelSchema } from '../../../lib/modelSchemas';
 import type { PromptData, ImageUploadData, ImageNodeData } from '../types';
+import { Loader } from '../../ui/Loader';
 
 // Base Node Component with restored styling
 const BaseNode = ({ children, label, icon, selected, isLoading }: { children: ReactNode; label: string; icon: string; selected?: boolean; isLoading?: boolean }) => {
@@ -31,10 +35,7 @@ const BaseNode = ({ children, label, icon, selected, isLoading }: { children: Re
         <div className="flex items-center gap-2 w-full">
            <div className="text-xl flex items-center justify-center w-6 h-6">
              {isLoading ? (
-               <div className="relative w-5 h-5">
-                 <div className="absolute inset-0 rounded-full border-[2px] border-zinc-200 dark:border-zinc-700 opacity-20"></div>
-                 <div className="absolute inset-0 rounded-full border-[2px] border-transparent border-t-yellow-400 animate-spin"></div>
-               </div>
+               <Loader size="sm" />
              ) : (
                icon.startsWith('http') ? <img src={icon} className="w-full h-full object-contain" alt="" /> : icon
              )}
@@ -60,8 +61,8 @@ const BaseNode = ({ children, label, icon, selected, isLoading }: { children: Re
   );
 };
 
-// Generic Generative AI Node with Dynamic Schema Support
-export const StableDiffusionNode = memo(({ data }: { data: { label?: string; prompt?: string; status?: string; error?: string; output?: string; logo?: string; [key: string]: any } }) => {
+// Generic Generative AI Node (formerly StableDiffusionNode)
+export const GenerativeNode = memo(({ data }: { data: { label?: string; prompt?: string; status?: string; error?: string; output?: string; logo?: string; [key: string]: any } }) => {
   const nodeId = useNodeId();
   const { setNodes } = useReactFlow();
   const updateData = useCallback((patch: Record<string, unknown>) => {
@@ -81,18 +82,33 @@ export const StableDiffusionNode = memo(({ data }: { data: { label?: string; pro
   // Get schema based on the node's label (model name)
   const schema = useMemo(() => getSchemaForModel(data.label || 'Stable Diffusion 3.5'), [data.label]);
 
+  const generateUploadUrl = useMutation(api.workflows.generateUploadUrl);
+  const getFileUrl = useMutation(api.workflows.getFileUrl);
+  const registerFile = useMutation(apiAny.files.registerFile);
+
   const onFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const fieldName = e.target.name;
 
-    // If it's a large file (likely for processing), we might want to handle it differently
-    // For now, convert to DataURL
-    const reader = new FileReader();
-    reader.onload = () => {
-        updateData({ [e.target.name]: reader.result as string });
-    };
-    reader.readAsDataURL(file);
-  }, [updateData]);
+    try {
+        const postUrl = await generateUploadUrl();
+        const result = await fetch(postUrl, {
+            method: "POST",
+            headers: { "Content-Type": file.type },
+            body: file,
+        });
+        const { storageId } = await result.json();
+        await registerFile({ storageId, type: file.type, size: file.size });
+        const url = await getFileUrl({ storageId });
+        
+        if (url) {
+            updateData({ [fieldName]: url });
+        }
+    } catch (error) {
+        console.error("Upload failed:", error);
+    }
+  }, [updateData, generateUploadUrl, getFileUrl]);
 
   return (
     <BaseNode label={data.label || 'Generative Model'} icon={data.logo || "✨"} isLoading={isLoading}>
@@ -107,8 +123,8 @@ export const StableDiffusionNode = memo(({ data }: { data: { label?: string; pro
           disabled={isLoading} 
         />
         
-        {settingsOpen && (
-          <div className="p-2 rounded border space-y-2 text-[10px] bg-zinc-50 dark:bg-zinc-900/50 border-zinc-200 dark:border-zinc-800">
+        {/* Always show settings for tools/models */}
+        <div className="p-2 rounded border space-y-2 text-[10px] bg-zinc-50 dark:bg-zinc-900/50 border-zinc-200 dark:border-zinc-800">
              {schema.parameters.filter(p => p.name !== 'prompt').map((param) => (
                  <div key={param.name}>
                      <label className="text-zinc-600 dark:text-zinc-400 block mb-1 capitalize font-medium">{param.label || param.name}</label>
@@ -181,7 +197,6 @@ export const StableDiffusionNode = memo(({ data }: { data: { label?: string; pro
                  </div>
              ))}
           </div>
-        )}
 
         {data.error && (
             <div className="text-xs text-red-400 bg-red-900/20 p-2 rounded border border-red-800">
@@ -201,13 +216,6 @@ export const StableDiffusionNode = memo(({ data }: { data: { label?: string; pro
         )}
         
         <div className="node-toolbar">
-          <button 
-            className={`node-btn flex-1 ${settingsOpen ? 'bg-zinc-700 text-white' : ''}`} 
-            disabled={isLoading}
-            onClick={() => setSettingsOpen(!settingsOpen)}
-          >
-            ⚙️ Settings
-          </button>
           <button className="node-btn flex-1" disabled={isLoading} onClick={onRunNode}>
             {isLoading ? 'Generating...' : 'Generate'}
           </button>
@@ -217,28 +225,74 @@ export const StableDiffusionNode = memo(({ data }: { data: { label?: string; pro
   );
 });
 
-StableDiffusionNode.displayName = 'StableDiffusionNode';
+GenerativeNode.displayName = 'GenerativeNode';
 
 // Image Node
 export const ImageNode = memo(({ data }: { data: ImageNodeData }) => {
+  const nodeId = useNodeId();
+  const { setNodes } = useReactFlow();
+
+  const updateData = useCallback((patch: Record<string, unknown>) => {
+    if (!nodeId) return;
+    setNodes((nds) => nds.map((n) => n.id === nodeId ? { ...n, data: { ...n.data, ...patch } } : n));
+  }, [nodeId, setNodes]);
+
+  const generateUploadUrl = useMutation(api.workflows.generateUploadUrl);
+  const getFileUrl = useMutation(api.workflows.getFileUrl);
+  const registerFile = useMutation(apiAny.files.registerFile);
+
+  const onFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    try {
+        const postUrl = await generateUploadUrl();
+        const result = await fetch(postUrl, {
+            method: "POST",
+            headers: { "Content-Type": file.type },
+            body: file,
+        });
+        const { storageId } = await result.json();
+        await registerFile({ storageId, type: file.type, size: file.size });
+        const url = await getFileUrl({ storageId });
+        
+        if (url) {
+            updateData({ imageSrc: url, imageName: file.name });
+        }
+    } catch (error) {
+        console.error("Upload failed:", error);
+    }
+  }, [updateData, generateUploadUrl, getFileUrl, registerFile]);
+
   return (
     <BaseNode label={data.label || 'Image'} icon={data.logo || "🖼️"}>
       <div className="space-y-2">
         <div className="relative w-full h-24 bg-zinc-800/60 border border-zinc-700 rounded flex items-center justify-center overflow-hidden">
           {data.imageSrc ? (
+            <>
             <Image
               src={data.imageSrc}
               alt={data.imageName || data.label || 'image'}
               fill
               className="object-contain"
             />
+             <button 
+                onClick={() => updateData({ imageSrc: undefined, imageName: undefined })}
+                className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1 hover:bg-red-500/80 transition-colors"
+            >
+                ✕
+            </button>
+            </>
           ) : (
             <span className="text-3xl">🖼️</span>
           )}
         </div>
-        <button className="node-btn w-full">
-          📁 Upload Image
-        </button>
+        <label className="block w-full cursor-pointer">
+            <input type="file" accept="image/*" onChange={onFileChange} className="hidden" />
+            <div className="node-btn w-full text-center flex items-center justify-center gap-2">
+                <span>{data.imageSrc ? 'Change Image' : '📁 Upload Image'}</span>
+            </div>
+        </label>
       </div>
     </BaseNode>
   );
@@ -271,18 +325,76 @@ export const TextNode = memo(({ data }: { data: { label?: string; text?: string 
 TextNode.displayName = 'TextNode';
 
 // Upscale Node
-export const UpscaleNode = memo(({ data }: { data: { label?: string; scale?: string } }) => {
+export const UpscaleNode = memo(({ data }: { data: { label?: string; scale?: string; imageSrc?: string; imageName?: string } }) => {
   const nodeId = useNodeId();
+  const { setNodes } = useReactFlow();
+  
+  const updateData = useCallback((patch: Record<string, unknown>) => {
+    if (!nodeId) return;
+    setNodes((nds) => nds.map((n) => n.id === nodeId ? { ...n, data: { ...n.data, ...patch } } : n));
+  }, [nodeId, setNodes]);
+
+  const generateUploadUrl = useMutation(api.workflows.generateUploadUrl);
+  const getFileUrl = useMutation(api.workflows.getFileUrl);
+  const registerFile = useMutation(apiAny.files.registerFile);
+
+  const onFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    try {
+        const postUrl = await generateUploadUrl();
+        const result = await fetch(postUrl, {
+            method: "POST",
+            headers: { "Content-Type": file.type },
+            body: file,
+        });
+        const { storageId } = await result.json();
+        await registerFile({ storageId, type: file.type, size: file.size });
+        const url = await getFileUrl({ storageId });
+        
+        if (url) {
+            updateData({ imageSrc: url, imageName: file.name });
+        }
+    } catch (error) {
+        console.error("Upload failed:", error);
+    }
+  }, [updateData, generateUploadUrl, getFileUrl]);
+
   const onRunNode = () => {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('karate-run-node', { detail: { nodeId } }));
     }
   };
+
   return (
     <BaseNode label={data.label || 'Upscale'} icon="🔍">
       <div className="space-y-2">
+        {/* Image Preview / Upload */}
+        {data.imageSrc && (
+            <div className="relative w-full h-24 bg-zinc-800 rounded overflow-hidden border border-zinc-700">
+                <Image src={data.imageSrc} alt="Source" fill className="object-contain" />
+                <button 
+                    onClick={() => updateData({ imageSrc: undefined, imageName: undefined })}
+                    className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1 hover:bg-red-500/80 transition-colors"
+                >
+                    ✕
+                </button>
+            </div>
+        )}
+        <label className="block w-full cursor-pointer">
+            <input type="file" accept="image/*" onChange={onFileChange} className="hidden" />
+            <div className={`w-full py-1.5 text-xs text-center border border-dashed rounded transition-colors ${data.imageSrc ? 'border-zinc-600 text-zinc-500' : 'border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/10'}`}>
+                {data.imageSrc ? 'Change Image' : '📁 Upload Source Image'}
+            </div>
+        </label>
+
         <div className="text-xs text-zinc-300 font-medium">Scale Factor</div>
-        <select className="node-input nodrag">
+        <select 
+            className="node-input nodrag"
+            value={data.scale}
+            onChange={(e) => updateData({ scale: e.target.value })}
+        >
           <option>2x (Double)</option>
           <option>4x (Quad)</option>
           <option>8x (Ultra)</option>
@@ -298,18 +410,77 @@ export const UpscaleNode = memo(({ data }: { data: { label?: string; scale?: str
 UpscaleNode.displayName = 'UpscaleNode';
 
 // Inpaint Node
-export const InpaintNode = memo(({ data }: { data: { label?: string; prompt?: string } }) => {
+export const InpaintNode = memo(({ data }: { data: { label?: string; prompt?: string; imageSrc?: string; imageName?: string } }) => {
   const nodeId = useNodeId();
+  const { setNodes } = useReactFlow();
+
+  const updateData = useCallback((patch: Record<string, unknown>) => {
+    if (!nodeId) return;
+    setNodes((nds) => nds.map((n) => n.id === nodeId ? { ...n, data: { ...n.data, ...patch } } : n));
+  }, [nodeId, setNodes]);
+
+  const generateUploadUrl = useMutation(api.workflows.generateUploadUrl);
+  const getFileUrl = useMutation(api.workflows.getFileUrl);
+  const registerFile = useMutation(apiAny.files.registerFile);
+
+  const onFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    try {
+        const postUrl = await generateUploadUrl();
+        const result = await fetch(postUrl, {
+            method: "POST",
+            headers: { "Content-Type": file.type },
+            body: file,
+        });
+        const { storageId } = await result.json();
+        await registerFile({ storageId, type: file.type, size: file.size });
+        const url = await getFileUrl({ storageId });
+        
+        if (url) {
+            updateData({ imageSrc: url, imageName: file.name });
+        }
+    } catch (error) {
+        console.error("Upload failed:", error);
+    }
+  }, [updateData, generateUploadUrl, getFileUrl]);
+
   const onRunNode = () => {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('karate-run-node', { detail: { nodeId } }));
     }
   };
+
   return (
     <BaseNode label={data.label || 'Inpaint'} icon="🎨">
       <div className="space-y-2">
+         {/* Image Preview / Upload */}
+         {data.imageSrc && (
+            <div className="relative w-full h-24 bg-zinc-800 rounded overflow-hidden border border-zinc-700">
+                <Image src={data.imageSrc} alt="Source" fill className="object-contain" />
+                <button 
+                    onClick={() => updateData({ imageSrc: undefined, imageName: undefined })}
+                    className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1 hover:bg-red-500/80 transition-colors"
+                >
+                    ✕
+                </button>
+            </div>
+        )}
+        <label className="block w-full cursor-pointer">
+            <input type="file" accept="image/*" onChange={onFileChange} className="hidden" />
+            <div className={`w-full py-1.5 text-xs text-center border border-dashed rounded transition-colors ${data.imageSrc ? 'border-zinc-600 text-zinc-500' : 'border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/10'}`}>
+                {data.imageSrc ? 'Change Image' : '📁 Upload Source Image'}
+            </div>
+        </label>
+
         <div className="text-xs text-zinc-300 font-medium">Mask & Prompt</div>
-        <textarea defaultValue={data.prompt || 'What to inpaint...'} className="node-textarea nodrag h-12" placeholder="Describe what to paint..." />
+        <textarea 
+            value={data.prompt || ''}
+            onChange={(e) => updateData({ prompt: e.target.value })}
+            className="node-textarea nodrag h-12" 
+            placeholder="Describe what to paint..." 
+        />
         <button className="node-btn w-full" onClick={onRunNode}>
           🎨 Inpaint
         </button>
@@ -385,15 +556,32 @@ export const ImageUploadNode = memo(({ data }: { data: ImageUploadData }) => {
     setNodes((nds) => nds.map((n) => n.id === nodeId ? { ...n, data: { ...n.data, ...patch } } : n));
   }, [nodeId, setNodes]);
 
-  const onFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const generateUploadUrl = useMutation(api.workflows.generateUploadUrl);
+  const getFileUrl = useMutation(api.workflows.getFileUrl);
+  const registerFile = useMutation(apiAny.files.registerFile);
+
+  const onFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      updateData({ imageSrc: reader.result as string, imageName: file.name });
-    };
-    reader.readAsDataURL(file);
-  }, [updateData]);
+    
+    try {
+        const postUrl = await generateUploadUrl();
+        const result = await fetch(postUrl, {
+            method: "POST",
+            headers: { "Content-Type": file.type },
+            body: file,
+        });
+        const { storageId } = await result.json();
+        await registerFile({ storageId, type: file.type, size: file.size });
+        const url = await getFileUrl({ storageId });
+        
+        if (url) {
+            updateData({ imageSrc: url, imageName: file.name });
+        }
+    } catch (error) {
+        console.error("Upload failed:", error);
+    }
+  }, [updateData, generateUploadUrl, getFileUrl]);
 
   return (
     <BaseNode

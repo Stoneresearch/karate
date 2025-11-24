@@ -35,19 +35,23 @@ import BrushIcon from '@mui/icons-material/Brush';
 import SettingsIcon from '@mui/icons-material/Settings';
 import CreditCardIcon from '@mui/icons-material/CreditCard';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import CollectionsBookmarkIcon from '@mui/icons-material/CollectionsBookmark';
 import SettingsPanel from './SettingsPanel';
+import { Loader } from '../ui/Loader';
+import MediaGallery from './MediaGallery';
 import {
-  StableDiffusionNode,
+  GenerativeNode,
   ImageNode,
   TextNode,
   UpscaleNode,
   InpaintNode,
   PromptNode,
-  ImageUploadNode,
+  ImageUploadNode
 } from './NodeTypes';
 
 const nodeTypes: Record<string, unknown> = {
-  stableDiffusion: StableDiffusionNode,
+  // Maps node types to React components
+  stableDiffusion: GenerativeNode,
   image: ImageNode,
   text: TextNode,
   upscale: UpscaleNode,
@@ -67,6 +71,7 @@ export default function Canvas({ roomId }: CanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [mediaGalleryOpen, setMediaGalleryOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string>('');
   const [scrollToCategory, setScrollToCategory] = useState<string | undefined>(undefined);
   const [focusSearchSignal, setFocusSearchSignal] = useState<number>(0);
@@ -74,34 +79,11 @@ export default function Canvas({ roomId }: CanvasProps) {
   const [outputPanelOpen, setOutputPanelOpen] = useState<boolean>(false);
   const [outputs, setOutputs] = useState<OutputItem[]>([]);
 
+  const [zoomedImage, setZoomedImage] = useState<string | null>(null);
+
   // Models and tools data
   const models = MODELS;
   const tools = TOOLS;
-
-  const pollStatus = async (taskId: string, runId?: string) => {
-    let attempts = 0;
-    const maxAttempts = 30; // 30s timeout for client-side polling
-    
-    while (attempts < maxAttempts) {
-        await new Promise(r => setTimeout(r, 1000));
-        try {
-            const res = await fetch(`/api/status?taskId=${taskId}&runId=${runId || ''}`);
-            if (!res.ok) continue;
-            const data = await res.json();
-            
-            if (data.status === 'completed') {
-                return data;
-            } else if (data.status === 'failed') {
-                throw new Error(data.error || 'Task failed');
-            }
-            // else: processing, continue
-        } catch (e) {
-            console.warn('Poll error:', e);
-        }
-        attempts++;
-    }
-    throw new Error('Timeout waiting for result');
-  };
 
   return (
     <ReactFlowProvider>
@@ -115,6 +97,10 @@ export default function Canvas({ roomId }: CanvasProps) {
         onEdgesChange={onEdgesChange}
         sidebarOpen={sidebarOpen}
         setSidebarOpen={setSidebarOpen}
+        mediaGalleryOpen={mediaGalleryOpen}
+        setMediaGalleryOpen={setMediaGalleryOpen}
+        zoomedImage={zoomedImage}
+        setZoomedImage={setZoomedImage}
         models={models}
         tools={tools}
         addNode={() => {}}
@@ -148,6 +134,10 @@ interface CanvasContentProps extends CanvasProps {
   onEdgesChange: (changes: EdgeChange[]) => void;
   sidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
+  mediaGalleryOpen: boolean;
+  setMediaGalleryOpen: (open: boolean) => void;
+  zoomedImage: string | null;
+  setZoomedImage: Dispatch<SetStateAction<string | null>>;
   models: PaletteItem[];
   tools: PaletteItem[];
   addNode: (type: string, label: string, logo?: string) => void;
@@ -175,6 +165,10 @@ function CanvasContent({
   onEdgesChange,
   sidebarOpen,
   setSidebarOpen,
+  mediaGalleryOpen,
+  setMediaGalleryOpen,
+  zoomedImage,
+  setZoomedImage,
   models,
   tools,
   addNode,
@@ -198,7 +192,7 @@ function CanvasContent({
   const { workflow, updateWorkflow } = useWorkflow(roomId);
   const [selectedTool] = useState<string | null>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, getNodes, getEdges } = useReactFlow();
   const [sidebarTabLocal, setSidebarTabLocal] = useState<'models' | 'tools'>(externalActiveTab || 'models');
   const [showMinimap, setShowMinimap] = useState<boolean>(true);
   const [snapToGrid, setSnapToGrid] = useState<boolean>(false);
@@ -208,12 +202,14 @@ function CanvasContent({
   const [agentOpen, setAgentOpen] = useState<boolean>(false);
   const [agentBusy, setAgentBusy] = useState<boolean>(false);
   const [agentInput, setAgentInput] = useState<string>("");
+  const [agentResponse, setAgentResponse] = useState<string | null>(null); // Store text response
   const [agentHidden, setAgentHidden] = useState<boolean>(false);
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'general' | 'billing'>('general');
   
   // Processing state for visual indicator
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const workflowId = useMemo(
@@ -322,15 +318,25 @@ function CanvasContent({
     [edges, setEdges]
   );
 
-  const pollStatus = useCallback(async (taskId: string, runId?: string) => {
+  // Helper: Poll task status
+  const pollStatus = useCallback(async (taskId: string, runId?: string, signal?: AbortSignal) => {
     let attempts = 0;
-    const maxAttempts = 300; // 5 minutes timeout for client-side polling (some models are slow)
+    const maxAttempts = 300; // 5 minutes timeout for client-side polling
     
     while (attempts < maxAttempts) {
+        if (signal?.aborted) throw new Error("Stopped by user");
+        
         await new Promise(r => setTimeout(r, 1000));
+        
+        if (signal?.aborted) throw new Error("Stopped by user");
+
         try {
-            const res = await fetch(`/api/status?taskId=${taskId}&runId=${runId || ''}`);
-            if (!res.ok) continue;
+            const res = await fetch(`/api/status?taskId=${taskId}&runId=${runId || ''}`, { signal });
+            if (!res.ok) {
+                // If 404 (Task not found) persists for a long time, it likely means the worker isn't running.
+                // We continue polling in case of race conditions, but we should be aware.
+                continue;
+            }
             const data = await res.json();
             
             if (data.status === 'completed') {
@@ -338,169 +344,334 @@ function CanvasContent({
             } else if (data.status === 'failed') {
                 throw new Error(data.error || 'Task failed');
             }
-            // else: processing, continue
-        } catch (e) {
+        } catch (e: any) {
+            if (e.name === 'AbortError' || signal?.aborted) throw new Error("Stopped by user");
             console.warn('Poll error:', e);
         }
         attempts++;
     }
-    throw new Error('Timeout waiting for result');
+    throw new Error('Timeout: AI processing took too long or backend worker is not running. Please check your terminal.');
   }, []);
 
-  // Minimal run handler: extract first prompt and first model label
-  const handleRun = useCallback(async (targetNodeId?: string) => {
+  // ===== Workflow Engine Execution Logic =====
+
+  // Recursive execution function
+  const executeGraph = useCallback(async (targetNodeId: string) => {
+    // Abort previous run if any
+    if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const signal = controller.signal;
+
     setIsProcessing(true);
     
-    // Find ALL relevant nodes (not just the first one)
-    const promptNodes = nodes.filter((n) => n.type === 'prompt');
+    // Use getters for fresh state
+    const currentNodes = getNodes();
+    const currentEdges = getEdges();
     
-    let targetModelNode = null;
-    if (targetNodeId) {
-        targetModelNode = nodes.find(n => n.id === targetNodeId);
-    }
-    
-    if (!targetModelNode) {
-        const modelNodes = nodes.filter((n) => n.type === 'stableDiffusion');
-        if (modelNodes.length > 0) {
-            targetModelNode = modelNodes[0];
-        }
-    }
-    
-    if (!targetModelNode) {
-        console.warn("No model node found to run.");
-        setIsProcessing(false);
-        return;
-    }
+    // Cache for execution results within this run
+    // Map nodeId -> outputUrl (or raw data)
+    const executionCache = new Map<string, any>();
 
-    // Update the node UI to show loading state
-    setNodes((nds: Node[]) => nds.map((n: Node) => n.id === targetModelNode!.id ? { ...n, data: { ...n.data, status: 'processing', error: undefined, output: undefined } } : n));
-    
-    try {
-      // Logic to find connected prompt node if specific one exists
-      let specificPromptNode = null;
-      if (targetNodeId) {
-          const incomingEdges = edges.filter(e => e.target === targetNodeId);
-          const incomingNodeIds = incomingEdges.map(e => e.source);
-          specificPromptNode = nodes.find(n => incomingNodeIds.includes(n.id) && n.type === 'prompt');
-      }
+    // Helper: Update node status in UI
+    const setNodeStatus = (id: string, status: 'processing' | 'completed' | 'error' | 'stopped' | undefined, error?: string, output?: string) => {
+      setNodes((nds) => nds.map(n => {
+         if (n.id !== id) return n;
+         const newData: any = { ...n.data, status };
+         if (error) newData.error = error;
+         if (output) newData.output = output;
+         // Clear previous errors if processing
+         if (status === 'processing') {
+             delete newData.error;
+         }
+         // If stopped or undefined, cleanup
+         if (status === 'stopped' || status === undefined) {
+             delete newData.error;
+             // Might want to keep output? For now, let's keep it.
+         }
+         return { ...n, data: newData };
+      }));
+    };
 
-      // Fallback to first available prompt node if no direct connection found
-      const promptNode = specificPromptNode || promptNodes[0]; 
-      const promptData = (promptNode?.data ?? {}) as { prompt?: string; label?: string };
-      const modelData = (targetModelNode?.data ?? {}) as { 
-        label?: string; 
-        prompt?: string;
-        aspect_ratio?: string;
-        guidance_scale?: number;
-        output_format?: string;
-        safety_tolerance?: number;
-        seed?: number;
-      };
-      
-      // Gather extra parameters
-      const inputParams: Record<string, any> = {};
-      for (const key in modelData) {
-        if (key !== 'label' && key !== 'prompt' && key !== 'status' && key !== 'error' && key !== 'output' && key !== 'logo') {
-          inputParams[key] = (modelData as any)[key];
+    // Recursive runner
+    // Returns: The output data (URL or text) of the node
+    async function runNode(nodeId: string, visited = new Set<string>()): Promise<any> {
+        if (signal.aborted) throw new Error("Stopped by user");
+
+        if (visited.has(nodeId)) {
+            throw new Error("Circular dependency detected");
         }
-      }
-      const modelLabel = modelData.label || 'Stable Diffusion 3.5';
-      
-      // Lookup slug from centralized MODELS array
-      const modelDef = [...MODELS, ...TOOLS].find(m => m.name === modelLabel);
-      const model = modelDef?.slug || modelLabel.toLowerCase().replace(/\s+/g, '-');
-      
-      // Call API
-      const res = await fetch('/api/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-            model, 
-            prompt: promptText, 
-            workflowId,
-            email: user?.primaryEmailAddress?.emailAddress,
-            ...inputParams 
-        }),
-      });
-      const data = await res.json().catch(() => null);
-      
-      if (data && data.error) {
-        // Show error in outputs
-        setOutputs((prev) => [{ 
-            url: '', 
-            model, 
-            prompt: promptText, 
-            ts: Date.now(),
-            error: data.detail || data.error 
-        }, ...prev].slice(0, 24));
-        setOutputPanelOpen(true);
+        visited.add(nodeId);
+
+        // Return cached result if available (memoization within the run)
+        if (executionCache.has(nodeId)) {
+            return executionCache.get(nodeId);
+        }
+
+        const node = currentNodes.find(n => n.id === nodeId);
+        if (!node) throw new Error(`Node ${nodeId} not found`);
+
+        // REUSE OUTPUT: If node is already completed and has output, don't re-run.
+        // This allows chaining without re-generating upstream images.
+        if ((node.data as any)?.status === 'completed' && (node.data as any)?.output) {
+             const existingOutput = (node.data as any).output;
+             executionCache.set(nodeId, existingOutput);
+             // If we are explicitly targeting this node, we might want to force re-run?
+             // But generally for a workflow engine, we want to avoid redundant compute.
+             // If the user wants to re-run, they can change a param or we need a "Force Run" option.
+             // For now, assuming "Smart Run" behavior.
+             if (nodeId !== targetNodeId) { // Only reuse if it's a dependency, or should we reuse even if target?
+                 // If it is the target, we probably WANT to run it again.
+                 // If it is a dependency, we want to reuse it.
+                 return existingOutput;
+             }
+             // If it IS the targetNodeId, we proceed to re-run it (fall through).
+        }
+
+        // 1. Identify Input/Data Nodes (No API call needed, just return data)
+        if (['prompt', 'text', 'image', 'imageUpload'].includes(node.type || '')) {
+            let result = null;
+            if (node.type === 'prompt') result = (node.data as any).prompt; // prompt text
+            else if (node.type === 'text') result = (node.data as any).text;
+            else if (node.type === 'image' || node.type === 'imageUpload') result = (node.data as any).imageSrc || (node.data as any).output;
+
+            // If prompt/text is empty, try to find inputs connected to it? 
+            // Usually Prompts are leaves, but they could be chained. 
+            // For now, treat them as sources.
+            executionCache.set(nodeId, result);
+            return result;
+        }
+
+        // 2. Processing Nodes (Gen AI, Tools) - need inputs
+        setNodeStatus(nodeId, 'processing');
         
-        // Update node status to error
-        setNodes((nds: Node[]) => nds.map((n: Node) => n.id === targetModelNode!.id ? { ...n, data: { ...n.data, status: 'error', error: data.detail || data.error } } : n));
-        return;
-      }
+        try {
+            // Find dependencies
+            const incomingEdges = currentEdges.filter(e => e.target === nodeId);
+            const inputs: Record<string, any> = {};
+            
+            // Execute dependencies in parallel-ish
+            for (const edge of incomingEdges) {
+                if (signal.aborted) throw new Error("Stopped by user");
+                const sourceOutput = await runNode(edge.source, new Set(visited));
+                if (sourceOutput) {
+                    // Heuristic to map inputs
+                    // If output is a URL (image), map to 'image'
+                    // If output is text, map to 'prompt'
+                    // Ideally edges would have handles mapping specific params
+                    const isUrl = typeof sourceOutput === 'string' && (sourceOutput.startsWith('http') || sourceOutput.startsWith('/'));
+                    
+                    // Specific logic based on target node type
+                    if (node.type === 'inpaint' && isUrl) {
+                        inputs.image = sourceOutput;
+                    } else if (node.type === 'upscale' && isUrl) {
+                        inputs.image = sourceOutput;
+                    } else if (node.type === 'stableDiffusion') {
+                         // Gen AI nodes usually take prompt text, or image for img2img
+                         if (isUrl) inputs.image = sourceOutput;
+                         else inputs.prompt = (inputs.prompt ? inputs.prompt + ' ' : '') + sourceOutput;
+                    } else {
+                        // Generic fallback
+                        if (isUrl) inputs.image = sourceOutput;
+                        else inputs.prompt = sourceOutput;
+                    }
+                }
+            }
 
-      let outputUrl = (data && (data.output_url || data.url)) as string | undefined;
-      
-      // If we got a task_id but no outputUrl, start polling
-      if (!outputUrl && data && data.task_id) {
-          try {
-             const pollResult = await pollStatus(data.task_id, data.run_id);
-             outputUrl = pollResult.output_url || pollResult.url;
-          } catch (pollErr) {
-             const msg = String(pollErr);
-             setOutputs((prev) => [{ 
-                url: '', 
-                model, 
-                prompt: promptText, 
-                ts: Date.now(),
-                error: msg 
-            }, ...prev].slice(0, 24));
+            if (signal.aborted) throw new Error("Stopped by user");
+
+            // Prepare Node Data
+            const nodeData = node.data as any;
+            const modelLabel = nodeData.label || 'Stable Diffusion 3.5';
+            
+            // Resolve model slug
+            const modelDef = [...MODELS, ...TOOLS].find(m => m.name === modelLabel);
+            const modelSlug = modelDef?.slug || modelLabel.toLowerCase().replace(/\s+/g, '-');
+
+            // Determine prompt (local vs input)
+            // Prefer input prompt if available (chained), else local
+            const finalPrompt = inputs.prompt || nodeData.prompt || '';
+
+            // Don't run if missing essentials
+            // Specific validation per node type
+            if (node.type === 'upscale') {
+                if (!inputs.image && !nodeData.imageSrc) {
+                    throw new Error("Upscale node missing input image (connect an image node or upload one)");
+                }
+            } else if (node.type === 'inpaint') {
+                if (!inputs.image && !nodeData.imageSrc) {
+                    throw new Error("Inpaint node missing input image");
+                }
+            } else if (['stableDiffusion', 'generative'].includes(node.type || '')) {
+                if (!finalPrompt && !inputs.image && !nodeData.imageSrc) {
+                    throw new Error("Generative node missing prompt");
+                }
+            } else {
+                // Generic fallback
+                 if (!finalPrompt && !inputs.image && !nodeData.imageSrc && !['image', 'imageUpload', 'text', 'prompt'].includes(node.type || '')) {
+                     // Only throw if it's a processing node that seems empty
+                     console.warn("Node might be missing inputs:", node.type);
+                 }
+            }
+
+            // Construct API Payload
+            const payload: any = {
+                model: modelSlug,
+                prompt: finalPrompt,
+                workflowId: workflowId,
+                email: user?.primaryEmailAddress?.emailAddress,
+                ...inputs, // injected inputs from deps
+            };
+
+            // Add local params
+            const excludedKeys = ['label', 'prompt', 'status', 'error', 'output', 'logo', 'imageSrc'];
+            Object.keys(nodeData).forEach(key => {
+                if (!excludedKeys.includes(key)) {
+                    payload[key] = nodeData[key];
+                }
+            });
+            
+            // Specific param cleanup
+            if (node.type === 'upscale' && nodeData.scale) {
+                 if (String(nodeData.scale).includes('2x')) payload.scale = 2;
+                 else if (String(nodeData.scale).includes('4x')) payload.scale = 4;
+                 else if (String(nodeData.scale).includes('8x')) payload.scale = 8;
+            }
+
+            // Use local image if no input image provided (e.g. Img2Img with uploaded file on node)
+            if (!payload.image && nodeData.imageSrc) {
+                payload.image = nodeData.imageSrc;
+            }
+
+            // Call API
+            const res = await fetch('/api/run', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+                signal,
+            });
+
+            const data = await res.json();
+            if (data.error) throw new Error(data.detail || data.error);
+
+            let outputUrl = data.output_url || data.url;
+            
+            // Poll if async
+            if (!outputUrl && data.task_id) {
+                const pollResult = await pollStatus(data.task_id, data.run_id, signal);
+                outputUrl = pollResult.output_url || pollResult.url;
+            }
+
+            if (!outputUrl) throw new Error("No output URL received");
+
+            // Success!
+            setNodeStatus(nodeId, 'completed', undefined, outputUrl);
+            executionCache.set(nodeId, outputUrl);
+            
+            // Add to global outputs panel
+            setOutputs(prev => [{
+                url: outputUrl,
+                model: modelSlug,
+                prompt: finalPrompt,
+                ts: Date.now()
+            }, ...prev].slice(0, 50));
             setOutputPanelOpen(true);
-             setNodes((nds: Node[]) => nds.map((n: Node) => n.id === targetModelNode!.id ? { ...n, data: { ...n.data, status: 'error', error: msg } } : n));
-        return;
-          }
-      }
 
-      if (outputUrl) {
-        setOutputs((prev) => [{ url: outputUrl!, model, prompt: promptText, ts: Date.now() }, ...prev].slice(0, 24));
-        setOutputPanelOpen(true);
-        
-        // Update node status to success and show output
-        setNodes((nds: Node[]) => nds.map((n: Node) => n.id === targetModelNode!.id ? { ...n, data: { ...n.data, status: 'completed', output: outputUrl } } : n));
-      } else {
-         // Fallback generic error
-         const errMsg = "Unknown error occurred";
-         setOutputs((prev) => [{ 
-            url: '', 
-            model, 
-            prompt: promptText, 
-            ts: Date.now(),
-            error: errMsg
-        }, ...prev].slice(0, 24));
-        setOutputPanelOpen(true);
-        
-        setNodes((nds: Node[]) => nds.map((n: Node) => n.id === targetModelNode!.id ? { ...n, data: { ...n.data, status: 'error', error: errMsg } } : n));
-      }
-    } catch (e) {
-      console.error('Run failed', e);
-      const errMsg = String(e);
-      setOutputs((prev) => [{ 
-            url: '', 
-            model: 'System', 
-            prompt: 'System Error', 
-            ts: Date.now(),
-            error: errMsg
-        }, ...prev].slice(0, 24));
-        setOutputPanelOpen(true);
-        
-        if (targetModelNode) {
-            setNodes((nds: Node[]) => nds.map((n: Node) => n.id === targetModelNode!.id ? { ...n, data: { ...n.data, status: 'error', error: errMsg } } : n));
+            return outputUrl;
+
+        } catch (err: any) {
+            if (signal.aborted || err.name === 'AbortError' || err.message === 'Stopped by user') {
+                // Set status to stopped so spinner stops
+                setNodeStatus(nodeId, 'stopped');
+                throw new Error("Stopped by user");
+            }
+
+            const msg = err.message || String(err);
+            setNodeStatus(nodeId, 'error', msg);
+            // Show error in panel
+            setOutputs(prev => [{
+                url: '',
+                model: node.data.label as string || 'Unknown',
+                prompt: 'Error',
+                ts: Date.now(),
+                error: msg
+            }, ...prev].slice(0, 50));
+            setOutputPanelOpen(true);
+            throw err; // Propagate error to stop downstream
+        }
+    }
+
+    // Execution Entry Point
+    try {
+        await runNode(targetNodeId);
+    } catch (e: any) {
+        if (signal.aborted || e.name === 'AbortError' || e.message === 'Stopped by user') {
+            console.log('Workflow execution stopped by user');
+        } else {
+            console.error("Workflow execution failed:", e);
         }
     } finally {
-      setIsProcessing(false);
+        // Cleanup only if we are still the active controller
+        if (abortControllerRef.current === controller) {
+            setIsProcessing(false);
+            abortControllerRef.current = null;
+        }
     }
-  }, [nodes, workflowId, setNodes, setOutputs, setOutputPanelOpen, pollStatus, user, edges]);
+
+  }, [getNodes, getEdges, setNodes, workflowId, user, pollStatus]);
+
+
+  const handleRun = useCallback(async (targetNodeId?: string) => {
+      // If targetNodeId is provided (e.g. from node button), run that graph.
+      if (targetNodeId) {
+          await executeGraph(targetNodeId);
+          return;
+      }
+
+      // If no specific target (Global Run), find "leaf" processing nodes or just the last selected one.
+      // Strategy: Find nodes with NO outgoing edges (endpoints of the graph) that are "runnable".
+      const currentNodes = getNodes();
+      const currentEdges = getEdges();
+      
+      const runnableTypes = ['stableDiffusion', 'upscale', 'inpaint', 'generative'];
+      const runnableNodes = currentNodes.filter(n => runnableTypes.includes(n.type || ''));
+
+      if (runnableNodes.length === 0) {
+          console.warn("No runnable nodes found");
+          return;
+      }
+
+      // Find leaves among runnables
+      const leafNodes = runnableNodes.filter(n => !currentEdges.some(e => e.source === n.id));
+      
+      // If we have leaves, run them (topological logic will run deps). 
+      // If no leaves (circular or single node), just run the last one added?
+      const targets = leafNodes.length > 0 ? leafNodes : [runnableNodes[runnableNodes.length - 1]];
+
+      // Run all targets (could be parallel)
+      for (const target of targets) {
+          await executeGraph(target.id);
+      }
+
+  }, [executeGraph, getNodes, getEdges]);
+
+  const handleStop = useCallback(() => {
+    if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+    }
+    setIsProcessing(false);
+    
+    // Force reset any processing nodes
+    setNodes((nds) => nds.map(n => {
+        if ((n.data as any)?.status === 'processing') {
+             return { ...n, data: { ...n.data, status: 'stopped' } };
+        }
+        return n;
+    }));
+  }, [setNodes]);
 
   // Listen to node-run events
   useEffect(() => {
@@ -528,7 +699,7 @@ function CanvasContent({
       const data = e.dataTransfer.getData('application/json');
       if (!data) return;
       
-      const { type, label } = JSON.parse(data);
+      const { type, label, logo } = JSON.parse(data);
       if (!type || !label) return;
 
       const position = screenToFlowPosition({
@@ -536,9 +707,14 @@ function CanvasContent({
         y: e.clientY,
       });
 
+      const nodeData: any = { label, logo };
+      if (type === 'image' && logo) {
+          nodeData.imageSrc = logo;
+      }
+
       const newNode: Node = {
         id: `node-${Date.now()}`,
-        data: { label },
+        data: nodeData,
         position,
         type,
       };
@@ -632,64 +808,68 @@ function CanvasContent({
   const addWorkflowFromPrompt = useCallback(async (text: string) => {
     if (!text.trim()) return;
     setAgentBusy(true);
+    setAgentResponse(null); // Clear previous response
+    
     try {
-      const t = text.toLowerCase();
-      const planned: { type: string; label: string }[] = [];
-      // Seed with a prompt/input if user mentions prompt or any gen model
-      if (/prompt|describe|write/.test(t)) planned.push({ type: 'prompt', label: 'Prompt' });
+        const res = await fetch('/api/agent', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: text }),
+        });
+        
+        const data = await res.json();
+        
+        if (data.message) {
+            setAgentResponse(data.message);
+        }
+        
+        if (data.action && data.action.type === 'create_workflow') {
+            const { nodes: newNodes, edges: newEdges } = data.action;
+            if (Array.isArray(newNodes) && newNodes.length > 0) {
+                // Avoid ID collisions by regenerating them or assuming backend is smart.
+                // Backend sends hardcoded IDs like "1", "2". We should probably prefix them to avoid clashes with existing nodes.
+                const prefix = `gen-${Date.now()}-`;
+                const idMap: Record<string, string> = {};
+                
+                const mappedNodes = newNodes.map((n: any) => {
+                    const newId = prefix + n.id;
+                    idMap[n.id] = newId;
+                    return {
+                        ...n,
+                        id: newId,
+                        // Ensure position is somewhat centered if generic
+                        position: { 
+                            x: n.position.x + (window.innerWidth/2 - 300), 
+                            y: n.position.y + (window.innerHeight/2 - 200) 
+                        } 
+                    };
+                });
+                
+                const mappedEdges = (newEdges || []).map((e: any) => ({
+                    ...e,
+                    id: `edge-${idMap[e.source]}-${idMap[e.target]}`,
+                    source: idMap[e.source],
+                    target: idMap[e.target],
+                    animated: true
+                }));
+                
+                setNodes((prev) => [...prev, ...mappedNodes]);
+                setEdges((prev) => [...prev, ...mappedEdges]);
+            }
+        }
+        
+        if (data.error) {
+            setAgentResponse(`Error: ${data.error}`);
+        }
 
-      // Models
-      const pushIf = (cond: boolean, label: string, type: string = 'stableDiffusion') => { if (cond) planned.push({ type, label }); };
-      // Include Stable Diffusion 3.5 (image) as an option
-      pushIf(/stable diff|sd\s*3\.5/.test(t), 'Stable Diffusion 3.5');
-      pushIf(/gpt\s*image|gpt img/.test(t), 'GPT Image 1');
-      pushIf(/imagen\s*4/.test(t), 'Imagen 4');
-      pushIf(/imagen\s*3/.test(t), 'Imagen 3');
-      pushIf(/flux pro|flux\s*1\.1/.test(t), 'Flux Pro 1.1 Ultra');
-      pushIf(/dalle|dal\s*e/.test(t), 'DALL·E 3');
-
-      // Tools
-      const toolIf = (cond: boolean, label: string, type: string) => { if (cond) planned.push({ type, label }); };
-      toolIf(/remove background|bg remove/.test(t), 'Remove Background', 'image');
-      toolIf(/replace background/.test(t), 'Replace Background', 'image');
-      toolIf(/content[- ]?aware|fill\b/.test(t), 'Content-Aware Fill', 'image');
-      toolIf(/inpaint|fix area/.test(t), 'Inpaint', 'inpaint');
-      toolIf(/upscale|increase resolution|enhance/.test(t), 'Upscale', 'upscale');
-      toolIf(/upload|source image/.test(t), 'Image Upload', 'imageUpload');
-
-      if (planned.length === 0) {
-        // Fallback sensible chain with Stable Diffusion image model
-        planned.push({ type: 'prompt', label: 'Prompt' });
-        planned.push({ type: 'stableDiffusion', label: 'Stable Diffusion 3.5' });
-      }
-
-      // Layout new nodes
-      const startX = 240 + Math.random() * 80;
-      const startY = 240 + Math.random() * 40;
-      const spacingX = 280;
-      const created: Node[] = planned.map((p, idx) => ({
-        id: `node-${Date.now()}-${idx}-${Math.random().toString(36).slice(2,7)}`,
-        type: p.type,
-        position: { x: startX + idx * spacingX, y: startY },
-        data: { label: p.label },
-      }));
-
-      const newEdges: Edge[] = created.slice(1).map((n, i) => ({
-        id: `edge-${created[i].id}-${n.id}`,
-        source: created[i].id,
-        target: n.id,
-        sourceHandle: 'source',
-        targetHandle: 'target',
-        animated: true,
-      }));
-
-      setNodes([...nodes, ...created]);
-      setEdges([...edges, ...newEdges]);
+    } catch (e) {
+        console.error("Agent Error:", e);
+        setAgentResponse("Sorry, I encountered an error reaching the brain.");
     } finally {
       setAgentBusy(false);
       setAgentInput('');
     }
-  }, [nodes, edges, setNodes, setEdges]);
+  }, [setNodes, setEdges]);
 
   return (
     <div className="h-screen w-screen flex flex-col bg-white text-zinc-900 dark:bg-black dark:text-white">
@@ -706,7 +886,8 @@ function CanvasContent({
         onToggleMinimap={() => setShowMinimap((v) => !v)}
         onToggleGrid={() => setSnapToGrid((v) => !v)}
         onToggleOutputs={() => setOutputPanelOpen((v) => !v)}
-        onRun={handleRun}
+        onRun={() => handleRun()}
+        onStop={handleStop}
         onUndo={() => { /* Todo */ }}
         onRedo={() => { /* Todo */ }}
         onTitleChange={handleTitleChange}
@@ -733,6 +914,7 @@ function CanvasContent({
                 };
 
                 const activeRailKey = (() => {
+                    if (mediaGalleryOpen) return 'media_gallery';
                     if (['Image Gen', 'Advanced'].includes(activeCategory)) return 'image';
                     if (['Video Gen', 'Video Enhance', 'Lip Sync'].includes(activeCategory)) return 'video';
                     if (['Audio Gen'].includes(activeCategory)) return 'audio';
@@ -777,20 +959,25 @@ function CanvasContent({
                     label: 'Editing Tools',
                     targetTab: 'tools',
                     targetCat: 'Edit',
-              },
+                  },
               {
-                key: 'helpers',
-                icon: <CloudUploadIcon />,
-                    label: 'Files & Assets',
-                    targetTab: 'models', // Fix: 'Helpers' are in 'models' in models array
-                    targetCat: 'Helpers',
+                key: 'media_gallery',
+                icon: <CollectionsBookmarkIcon />,
+                    label: 'My Media',
+                    action: () => setMediaGalleryOpen(true),
               },
             ];
 
             return (
               <>
-                <motion.button
-                  onClick={() => setSidebarOpen(!sidebarOpen)}
+                  <motion.button
+                  onClick={() => {
+                      if (sidebarOpen) setSidebarOpen(false); // Toggle
+                      else {
+                          setMediaGalleryOpen(false); // Close media if open
+                          setSidebarOpen(true);
+                      }
+                  }}
                   className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
                     sidebarOpen ? 'bg-yellow-400 text-black' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
                   }`}
@@ -807,6 +994,14 @@ function CanvasContent({
                   <motion.button
                     key={item.key}
                     onClick={() => {
+                        if ((item as any).action) {
+                            // Close sidebar if opening media gallery
+                            setSidebarOpen(false);
+                            (item as any).action();
+                            return;
+                        }
+                        // Standard Sidebar Tab
+                        setMediaGalleryOpen(false); // Close media
                         if (!sidebarOpen) setSidebarOpen(true);
                         setSidebarTabLocal(item.targetTab as 'models' | 'tools');
                         // Find first available category matching the group
@@ -906,6 +1101,19 @@ function CanvasContent({
           }}
         />
 
+        <MediaGallery 
+            isOpen={mediaGalleryOpen}
+            onClose={() => setMediaGalleryOpen(false)}
+            onDragStart={(e, item) => {
+                e.dataTransfer.effectAllowed = 'copy';
+                e.dataTransfer.setData('application/json', JSON.stringify({
+                    type: item.type,
+                    label: item.name,
+                    logo: item.logo
+                }));
+            }}
+        />
+
         {/* Canvas Area */}
         <div
           className="flex-1 bg-white dark:bg-black relative"
@@ -970,8 +1178,14 @@ function CanvasContent({
                           <p className="text-[10px] opacity-80">{o.error}</p>
                         </div>
                       ) : (
-                        <div className="relative aspect-square bg-black/20 flex items-center justify-center overflow-hidden">
+                        <div 
+                          className="relative aspect-square bg-black/20 flex items-center justify-center overflow-hidden cursor-pointer hover:opacity-90 transition-opacity group"
+                          onClick={() => setZoomedImage(o.url)}
+                        >
                           <Image src={o.url} alt="output" fill className="object-cover" />
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" /></svg>
+                          </div>
                         </div>
                       )}
                       <div className="p-2 text-[11px] text-zinc-500">
@@ -984,6 +1198,55 @@ function CanvasContent({
               </div>
             </div>
           )}
+
+          {/* Zoomed Image Modal */}
+          <AnimatePresence>
+            {zoomedImage && (
+              <motion.div
+                className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center p-4"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setZoomedImage(null)}
+              >
+                <motion.div
+                  className="relative w-full h-full max-w-5xl max-h-[90vh] flex items-center justify-center"
+                  initial={{ scale: 0.9 }}
+                  animate={{ scale: 1 }}
+                  exit={{ scale: 0.9 }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {/* Close Button */}
+                  <button 
+                    onClick={() => setZoomedImage(null)}
+                    className="absolute -top-12 right-0 text-white/70 hover:text-white"
+                  >
+                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                  
+                  {/* Image */}
+                  <img 
+                    src={zoomedImage} 
+                    alt="Zoomed" 
+                    className="w-auto h-auto max-w-full max-h-full object-contain rounded-lg shadow-2xl border border-white/10" 
+                  />
+                  
+                  {/* Download Button */}
+                  <a 
+                    href={zoomedImage} 
+                    download="generation.png"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="absolute bottom-4 right-4 bg-white text-black px-4 py-2 rounded-lg font-medium text-sm hover:bg-zinc-200 transition-colors flex items-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                    Download
+                  </a>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Minimalist Drag Indicator */}
           {isDraggingOver && (
             <motion.div
@@ -1082,8 +1345,13 @@ function CanvasContent({
           <AnimatePresence initial={false}>
             {!agentHidden && (
               <motion.div
-                className="absolute z-40 w-full px-4"
-                style={{ left: 0, right: 0, bottom: `calc(env(safe-area-inset-bottom) + 16px)` }}
+                className="absolute z-30 w-full px-4 transition-all duration-300"
+                style={{ 
+                    left: 0, 
+                    right: 0, 
+                    bottom: `calc(env(safe-area-inset-bottom) + 16px)`,
+                    paddingLeft: sidebarOpen ? '270px' : '0'
+                }}
                 initial={{ opacity: 0, y: 24 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 24 }}
@@ -1112,6 +1380,14 @@ function CanvasContent({
                         exit={{ height: 0, opacity: 0 }}
                       >
                         <div className="p-4">
+                          {/* Agent Response Area */}
+                          {agentResponse && (
+                            <div className="mb-3 p-3 bg-zinc-800/50 rounded-lg border border-zinc-700 text-sm text-zinc-200 shadow-inner whitespace-pre-wrap max-h-40 overflow-y-auto custom-scrollbar">
+                                <span className="text-yellow-400 font-bold mr-2">AI:</span>
+                                {agentResponse}
+                            </div>
+                          )}
+
                           <div className="flex items-center gap-3 bg-zinc-900/50 border border-zinc-800 rounded-2xl p-1.5 pl-4 focus-within:border-zinc-700 focus-within:bg-zinc-900 transition-all">
                             <input
                               className="flex-1 bg-transparent border-none outline-none text-sm text-zinc-200 placeholder-zinc-600 font-medium"
@@ -1123,9 +1399,9 @@ function CanvasContent({
                             <button
                               onClick={() => addWorkflowFromPrompt(agentInput)}
                               disabled={agentBusy}
-                              className={`h-9 px-6 rounded-xl bg-gradient-to-r from-yellow-300 to-cyan-300 text-black font-bold text-sm shadow-lg hover:shadow-yellow-400/20 hover:scale-[1.02] active:scale-[0.98] transition-all ${agentBusy ? 'opacity-60 cursor-not-allowed grayscale' : ''}`}
+                              className={`h-9 px-6 rounded-xl bg-gradient-to-r from-yellow-300 to-cyan-300 text-black font-bold text-sm shadow-lg hover:shadow-yellow-400/20 hover:scale-[1.02] active:scale-[0.98] transition-all ${agentBusy ? 'opacity-60 cursor-not-allowed grayscale' : ''} flex items-center justify-center`}
                             >
-                              {agentBusy ? 'Building...' : 'Generate'}
+                              {agentBusy ? <Loader size="sm" variant="dots" /> : 'Generate'}
                             </button>
                           </div>
                           <div className="text-[10px] text-zinc-600 mt-2 px-2 font-medium">

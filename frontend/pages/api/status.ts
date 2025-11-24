@@ -32,6 +32,53 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const data = await response.json();
 
+    // If completed, fetch the image and store it in Convex Storage (PERSISTENCE)
+    if (data.status === 'completed' && (data.output_url || data.url) && convexClient) {
+        try {
+            const tempUrl = data.output_url || data.url;
+            
+            // 1. Check if we already stored it (optimization? maybe overkill for now)
+            
+            // 2. Fetch the image data from Replicate
+            const imgRes = await fetch(tempUrl);
+            if (imgRes.ok) {
+                const blob = await imgRes.blob();
+                const contentType = imgRes.headers.get('content-type') || 'image/png';
+                
+                // 3. Generate Upload URL from Convex
+                const postUrl = await convexClient.mutation(api.workflows.generateUploadUrl, {});
+                
+                // 4. Upload to Convex Storage
+                const uploadRes = await fetch(postUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": contentType },
+                    body: blob,
+                });
+                
+                if (uploadRes.ok) {
+                    const { storageId } = await uploadRes.json();
+                    
+                    // 5. Get Permanent URL
+                    const permanentUrl = await convexClient.mutation(api.workflows.getFileUrl, { storageId });
+                    
+                    if (permanentUrl) {
+                        // Replace the temp Replicate URL with our permanent one
+                        data.output_url = permanentUrl;
+                        data.url = permanentUrl;
+                        
+                        // Register file in DB for tracking (optional but good for "my files" view later)
+                        // We need the userId for this, but status endpoint doesn't have it easily.
+                        // We can skip strictly linking to user in 'files' table for now, 
+                        // or we can update 'runs' table which IS linked to user.
+                    }
+                }
+            }
+        } catch (err) {
+            console.error("Failed to persist Replicate output:", err);
+            // Fallback: keep the temp URL so the user at least sees it
+        }
+    }
+
     // If we have a runId and the task is done/failed, update Convex
     if (convexClient && runId && typeof runId === 'string') {
         // We only update if we haven't already (client might poll multiple times)

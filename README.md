@@ -10,18 +10,26 @@
 - Drag-and-drop node system with XYFlow
 - Real-time collaboration with Convex
 - Smooth animations and transitions
-- Undo/redo functionality
+- **Smart Caching**: Reuses outputs from completed nodes to save time and credits
+- **Cancellation**: Stop running workflows instantly
 
 🎨 **Complete AI Model Integration**
-- Stable Diffusion 3.5, Flux Pro, DALL·E 3
-- Ideogram V3, Minimax Image, Runway Gen-4
-- **Non-blocking generation**: Jobs run in the background via Redis queue
-- Real-time status polling
+- **Latest Models**: Google Nano Banana, Imagen 4, Stable Diffusion 3.5, Flux Pro
+- **Video Models**: Veo 2, Luma Ray 2, Runway Gen-3
+- **Non-blocking generation**: Jobs run in the background via Redis/Celery
+- Real-time status polling with progress updates
 
 🛠️ **Professional Editing Tools**
-- Upscale, Inpaint, Crop, Blur, Invert
-- More tools ready to be added
-- Tool parameters and settings
+- Upscale, Inpaint (smart mask), Crop, Blur
+- **Flexible Inputs**: Tools work with connected nodes OR uploaded images
+- **No Prompt Required**: Image-to-image tools run without text prompts
+- Tool parameters and settings (aspect ratio, guidance, seed)
+
+📂 **Asset Management**
+- **My Media Gallery**: Modern, sliding modal to view all your assets
+- **Drag & Drop**: Drag images from the gallery directly onto the canvas
+- **Persistent Storage**: All uploads and generated outputs are stored permanently
+- **Auto-Organization**: Automatically tracks file metadata
 
 💫 **Modern UI/UX**
 - Animated landing page with parallax effects
@@ -30,20 +38,15 @@
 - Dark mode with yellow/cyan accent colors
 - Responsive design
 
-🔄 **Real-Time & Reliable**
-- Live workflow syncing via Convex
-- **Redis-backed Job Queue**: Tasks survive backend restarts
-- Persistent storage
-
 ---
 
 ## 📋 Tech Stack
 
 - **Frontend**: Next.js 16, React 19, TypeScript
-- **Styling**: Tailwind CSS, Framer Motion
+- **Styling**: Tailwind CSS, Framer Motion, HeroUI
 - **Node Editor**: XYFlow 12
 - **Real-Time DB**: Convex
-- **Job Queue**: Redis
+- **Job Queue**: Redis + Celery
 - **Backend**: Python FastAPI (Async)
 - **State Management**: Zustand, Jotai
 - **Animations**: Framer Motion, GSAP
@@ -59,6 +62,7 @@ karate/
 │   │   ├── NodeEditor/
 │   │   │   ├── Canvas.tsx           # Main editor canvas with XYFlow
 │   │   │   ├── Sidebar.tsx          # Collapsible sidebar with models/tools
+│   │   │   ├── MediaGallery.tsx     # "My Media" sliding gallery
 │   │   │   └── NodeTypes/
 │   │   │       └── index.tsx        # All node component types
 │   │   └── Realtime/
@@ -68,7 +72,7 @@ karate/
 │   │   ├── editor.tsx              # Editor page with loader
 │   │   ├── api/                    # Next.js API Routes
 │   │   │   ├── run.ts              # Job submission (non-blocking)
-│   │   │   └── status.ts           # Job status polling
+│   │   │   └── status.ts           # Job status polling & result persistence
 │   │   └── _app.tsx                # App provider
 │   ├── lib/
 │   │   ├── models.ts               # Centralized Model Definitions
@@ -76,20 +80,22 @@ karate/
 │   │       └── client.tsx          # Convex client setup
 │   └── package.json
 ├── convex/
-│   ├── schema.ts                   # Database schema
+│   ├── schema.ts                   # Database schema (including 'files' table)
+│   ├── files.ts                    # File management mutations
 │   ├── workflows.ts                # Workflow queries & mutations
-│   ├── grant_credits.ts            # Admin script for credits
 │   └── _generated/                 # Auto-generated Convex API
 ├── backend/                        # Python FastAPI Backend
 │   ├── main.py                     # API Entrypoint
 │   ├── api/v1/ai.py                # AI Endpoints
-│   ├── workers/tasks.py            # Redis-backed Async Workers
+│   ├── workers/tasks.py            # Celery Tasks (Replicate/AI integration)
+│   ├── celery_app.py               # Celery App Configuration
 │   └── core/
 │       ├── config.py               # Centralized Backend Config
 │       └── redis.py                # Redis Connection
+├── start_worker.sh                 # Script to start the Celery worker
+├── start_backend.sh                # Script to start the FastAPI server
 └── docs/                           # Documentation (public + technical)
     ├── GET_STARTED.md
-    ├── QUICK_START.md
     ├── WORKFLOW_EDITOR_GUIDE.md
     └── instruction.md              # Full technical documentation
 ```
@@ -133,12 +139,9 @@ npm install -g convex
 cd .. && npx convex init
 ```
 
-This will:
-- Create a `.env.local` file with your `NEXT_PUBLIC_CONVEX_URL`
-- Set up your Convex project
-- Generate TypeScript types
-
 ### 4. Start Development Servers
+
+You need to run **three** terminals to have the full stack operational.
 
 **Terminal 1: Convex Backend**
 ```bash
@@ -151,26 +154,44 @@ cd frontend
 npm run dev
 ```
 
-**Terminal 3: Python Backend**
+**Terminal 3: Python Backend & Worker**
+The backend handles API requests, and the worker processes the heavy AI tasks.
 
-We have provided a helper script to automatically set up the virtual environment and install dependencies:
+**Option A: Run both with scripts (Recommended)**
+Open two separate tabs for these:
 
 ```bash
-# From the project root
-chmod +x start_backend.sh  # Make it executable (only needed once)
+# Tab 1: Start the API Server
 ./start_backend.sh
+
+# Tab 2: Start the Celery Worker
+./start_worker.sh
 ```
 
-Or manually:
+**Option B: Manual Setup**
 
 ```bash
+# Create venv
 python3 -m venv backend/.venv
-source backend/.venv/bin/activate  # On Windows: backend\.venv\Scripts\activate
-python3 -m pip install -U pip
-python3 -m pip install -r backend/requirements.txt
-export INTERNAL_API_KEY=dev-secret
+source backend/.venv/bin/activate
+
+# Install deps
+pip install -r backend/requirements.txt
+
+# Start API
 python3 -m uvicorn backend.main:app --reload
+
+# Start Worker (in another terminal, same venv)
+celery -A backend.celery_app worker --loglevel=info
 ```
+
+### What is `start_worker.sh`?
+This script launches the **Celery Worker**.
+- It activates the Python virtual environment.
+- It connects to **Redis** (the message broker).
+- It listens for tasks added to the queue by the API (e.g., "generate image").
+- It executes the AI model calls (to Replicate, OpenAI, etc.) asynchronously.
+- **Without this running, your AI generation requests will stay in "Processing" forever.**
 
 ---
 
@@ -200,14 +221,17 @@ npx tsx convex/grant_credits.ts user@example.com 1000
 - Click "START NOW" or "Open Editor" to go to the editor
 
 ### Editor
-1. **Toggle Sidebar**: Click the menu icon on the left
-2. **Add Nodes**:
-   - Click "AI Models" tab to see available models
-   - Click "Tools" tab to see editing tools
-   - Click any model/tool card to add it to the canvas
-3. **Connect Nodes**: Drag from output handle to input handle
-4. **Run Workflow**: Click the "Run" button in the top bar
-5. **Save**: Changes auto-save to Convex
+1. **Toggle Sidebar**: Click the menu icon on the left.
+2. **My Media**: Click the "My Media" icon to open your gallery. Drag saved images onto the canvas.
+3. **Add Nodes**:
+   - Click "AI Models" or "Tools" in the sidebar.
+   - Click any card to add it.
+4. **Connect Nodes**: Drag from output handle to input handle.
+5. **Run Workflow**:
+   - Click "Run" in the top bar to execute the whole flow.
+   - Click "Run" on a specific node to execute just that step.
+   - Click "Stop" to cancel execution.
+6. **Save**: Changes auto-save to Convex.
 
 ---
 
@@ -225,11 +249,6 @@ theme: {
   },
 }
 ```
-
-### Add New Node Types
-1. Add definitions to `frontend/lib/models.ts` (frontend UI) and `backend/core/config.py` (backend costs).
-2. Create component in `frontend/components/NodeEditor/NodeTypes/index.tsx`
-3. Export it and add to `nodeTypes` in `Canvas.tsx`
 
 ---
 
@@ -278,6 +297,6 @@ For issues, feature requests, or questions:
 
 ---
 
-**Built with ❤️ using Next.js, Convex, Redis, and XYFlow**
+**Built with ❤️ using Next.js, Convex, Redis, Celery, and XYFlow**
 
 🚀 Ready to create amazing AI workflows!

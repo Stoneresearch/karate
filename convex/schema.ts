@@ -51,8 +51,10 @@ export default defineSchema({
     startedAt: v.number(),
     completedAt: v.optional(v.number()),
     cost: v.optional(v.number()), // Credits used
-  }).index('by_workflow', ['workflowId']),
-  
+  })
+    .index('by_workflow', ['workflowId'])
+    .index('by_user', ['userId']),
+
   transactions: defineTable({
     userId: v.id('users'),
     type: v.string(), // 'credit_purchase' | 'run_cost' | 'manual_deduction' | 'refund'
@@ -100,4 +102,14 @@ export default defineSchema({
     .index('by_status', ['status'])
     .index('by_type', ['type'])
     .index('by_createdAt', ['createdAt']),
+
+  files: defineTable({
+    storageId: v.string(),
+    type: v.optional(v.string()), // 'image/png' etc
+    size: v.optional(v.number()),
+    createdAt: v.number(),
+    userId: v.id('users'),
+  })
+    .index('by_createdAt', ['createdAt'])
+    .index('by_user', ['userId']),
 });

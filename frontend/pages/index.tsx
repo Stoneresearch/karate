@@ -3,10 +3,18 @@ import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import LandingHeader from '../components/Layout/LandingHeader';
+import { Loader } from '../components/ui/Loader';
 
 export default function Home() {
   const [isScrolled, setIsScrolled] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Simulate loading for visual effect on landing
+    const timer = setTimeout(() => setIsLoading(false), 800);
+    return () => clearTimeout(timer);
+  }, []);
   const carouselRef = useRef<HTMLDivElement>(null);
   const isDraggingRef = useRef(false);
   const dragStartXRef = useRef(0);
@@ -51,6 +59,14 @@ export default function Home() {
     { name: 'Z Depth Extractor', position: 'bottom-20 right-1/4' },
     { name: 'Relight', position: 'bottom-20 right-10' },
   ];
+
+  if (isLoading) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-black text-white">
+        <Loader size="xl" />
+      </div>
+    );
+  }
 
   return (
     <main className={`min-h-screen overflow-x-hidden bg-white text-zinc-900 dark:bg-black dark:text-white`} ref={containerRef}>
